@@ -95,7 +95,7 @@ class GPT2Wrapper(nn.Module):
             model.h.insert(i*per, block)
         model.h.insert(len(model.h), self.iblocks[-1])
 
-        self.head_mask = torch.ones(len(model.h), model.config.n_head)
+        self.register_buffer(name='head_mask', tensor=torch.ones(len(model.h), model.config.n_head))
         # We need to create a special head mask because we've changes the number of blocks.
 
         for param in model.parameters():
