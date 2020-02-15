@@ -176,8 +176,8 @@ def go(arg):
     model = GPT2Wrapper(iblocks=arg.iblocks)
 
     if torch.cuda.is_available():
-        model.cuda()
-        model.model.mod[0].cuda()
+        model.to('cuda')
+        model.model.mod[0].to('cuda')
 
     # tokenize the data
     data_train, data_val, data_test = \
@@ -205,7 +205,7 @@ def go(arg):
         # -- target is the same sequence as source, except one character ahead
 
         if torch.cuda.is_available():
-            source, target = source.cuda(), target.cuda()
+            source, target = source.to('cuda'), target.to('cuda')
 
         output = model(source)
 
