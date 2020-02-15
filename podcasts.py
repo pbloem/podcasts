@@ -177,6 +177,7 @@ def go(arg):
 
     if torch.cuda.is_available():
         model.cuda()
+        model.model.mod[0].cuda()
 
     # tokenize the data
     data_train, data_val, data_test = \
