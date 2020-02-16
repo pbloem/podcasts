@@ -377,7 +377,7 @@ def go_pods(arg):
 
     tbw = SummaryWriter(log_dir=arg.tb_dir) # Tensorboard logging
 
-    df = pd.read_csv('./data/df_popular_podcasts.csv')
+    df = pd.read_csv(here('./data/df_popular_podcasts.csv'))
 
     gs = set()
     for genres in df['Genre IDs']:
