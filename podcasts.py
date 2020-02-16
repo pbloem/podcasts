@@ -333,39 +333,40 @@ def go(arg):
 
 def tobatch(df, tokenizer, g2i, normalize_genres=True):
 
-    # batch of tokenized text
-    strings = []
+    with torch.no_grad(): # just in case
+        # batch of tokenized text
+        strings = []
 
-    for row in range(len(df)):
-        name = df.iloc[row]['Name']
-        desc = df.iloc[row]['Description']
+        for row in range(len(df)):
+            name = df.iloc[row]['Name']
+            desc = df.iloc[row]['Description']
 
-        desc = desc.replace('\n', '')
-        strings.append(f'description: {desc} \n title: {name}')
+            desc = desc.replace('\n', '')
+            strings.append(f'description: {desc} \n title: {name}')
 
-    ids = []
-    for string in strings:
-        ids.append(tokenizer.encode(string))
+        ids = []
+        for string in strings:
+            ids.append(tokenizer.encode(string))
 
-    # pad to max
-    mx = max([len(id) for id in ids])
-    ids = [id + ( [0] * (mx - len(id)) ) for id in ids]
-    # I think zero should work as a pad token
+        # pad to max
+        mx = max([len(id) for id in ids])
+        ids = [id + ( [0] * (mx - len(id)) ) for id in ids]
+        # I think zero should work as a pad token
 
-    ids = [torch.tensor(id)[None, :] for id in ids]
-    ids = torch.cat(ids, dim=0)
+        ids = [torch.tensor(id)[None, :] for id in ids]
+        ids = torch.cat(ids, dim=0)
 
-    # batch of n-hot vectors for genres
-    ng = len(g2i)
-    genres = torch.zeros(ids.size(0), ng)
+        # batch of n-hot vectors for genres
+        ng = len(g2i)
+        genres = torch.zeros(ids.size(0), ng)
 
-    for row in range(len(df)):
-        dfgs = [int(g) for g in eval(df.iloc[row]['Genre IDs'])]
-        for intg in dfgs:
-            genres[row, g2i[intg]] = 0
+        for row in range(len(df)):
+            dfgs = [int(g) for g in eval(df.iloc[row]['Genre IDs'])]
+            for intg in dfgs:
+                genres[row, g2i[intg]] = 0
 
-    if normalize_genres:
-        genres = genres / genres.sum(dim=1, keepdim=True)
+        if normalize_genres:
+            genres = genres / genres.sum(dim=1, keepdim=True)
 
     return ids, genres
 
@@ -444,12 +445,13 @@ def go_pods(arg):
             del loss, source, target, genres
             model.clear()
 
-            # for obj in gc.get_objects():
-            #     try:
-            #         if torch.is_tensor(obj) or (hasattr(obj, 'data') and torch.is_tensor(obj.data)):
-            #             print(type(obj), obj.size())
-            #     except:
-            #         pass
+            for obj in gc.get_objects():
+                try:
+                    if torch.is_tensor(obj) or (hasattr(obj, 'data') and torch.is_tensor(obj.data)):
+                        if obj.size(0) == b:
+                            print(type(obj), obj.size())
+                except:
+                    pass
 
         # - validate every {arg.test_every} steps. First we compute the
         #   compression on the validation (or a subset)
