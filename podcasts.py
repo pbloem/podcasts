@@ -335,7 +335,7 @@ def go(arg):
                 tbw.add_scalar(f'podcasts/eval-loss', bits_per_byte, i * arg.batch_size)
 
 
-MAX_DESC = 1000 # max description length in characters
+MAX_DESC = 2000 # max description length in characters
 def tobatch(df, tokenizer, g2i, normalize_genres=True):
 
     with torch.no_grad(): # just in case
@@ -354,8 +354,9 @@ def tobatch(df, tokenizer, g2i, normalize_genres=True):
             ids.append(tokenizer.encode(string))
 
         # pad to max
-        mx = max([len(id) for id in ids])
-        ids = [id + ( [0] * (mx - len(id)) ) for id in ids]
+        mx = min(max([len(id) for id in ids]), 1024)
+        ids = [id[:mx] + ( [0] * (mx - len(id)) ) for id in ids]
+
         # I think zero should work as a pad token
 
         ids = [torch.tensor(id)[None, :] for id in ids]
