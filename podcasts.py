@@ -227,38 +227,41 @@ def go(arg):
 
         model.clear()
 
-        # generate some random text
-        GENSIZE = 600
-        TEMP = 0.5
-        seedfr = random.randint(0, data_test.size(0) - CONTEXT)
-        input = data_test[seedfr:seedfr + CONTEXT].to(torch.long)
-
-        if torch.cuda.is_available():
-            input = input.cuda()
-
-        # print the seed
-        strinput = model.tokenizer.decode(input)
-        print(f'[{strinput}]', end='')
-
-        outseq = []
-        for _ in range(GENSIZE):
-            output = model(input[None, :])
-            c = sample(output[0, -1, :], TEMP)
-            outseq.append(c[None])
-
-            input = torch.cat([input[1:], c[None]], dim=0)
-
-        outseq = torch.cat(outseq, dim=0)
-        outseq = model.tokenizer.decode(outseq)
-
-        print(outseq)
-
         # - validate every {arg.test_every} steps. First we compute the
         #   compression on the validation (or a subset)
         #   then we generate some random text to monitor progress
         if i != 0 and (i % arg.test_every == 0 or i == arg.num_batches - 1):
 
             with torch.no_grad():
+
+                # generate and print some random text
+
+                GENSIZE = 600
+                TEMP = 0.5
+                seedfr = random.randint(0, data_test.size(0) - CONTEXT)
+                input = data_test[seedfr:seedfr + CONTEXT].to(torch.long)
+
+                if torch.cuda.is_available():
+                    input = input.cuda()
+
+                # print the seed
+                strinput = model.tokenizer.decode(input)
+                print(f'[{strinput}]', end='')
+
+                outseq = []
+                for _ in range(GENSIZE):
+                    output = model(input[None, :])
+                    c = sample(output[0, -1, :], TEMP)
+                    outseq.append(c[None])
+
+                    input = torch.cat([input[1:], c[None]], dim=0)
+
+                outseq = torch.cat(outseq, dim=0)
+                outseq = model.tokenizer.decode(outseq)
+
+                print(outseq)
+
+                # val
 
                 upto = data_test.size(0) if i == arg.num_batches - 1 else arg.test_subset
                 data_sub = data_test[:upto]
