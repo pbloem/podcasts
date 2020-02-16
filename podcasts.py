@@ -468,7 +468,7 @@ def go_pods(arg):
         with torch.no_grad():
 
             # generate and print some random text
-            input = tok.encode("description: ")[None, :]
+            input = torch.tensor(tok.encode("description: "))[None, :]
 
             if torch.cuda.is_available():
                 input = input.to('cuda')
