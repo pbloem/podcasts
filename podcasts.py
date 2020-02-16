@@ -227,6 +227,32 @@ def go(arg):
 
         model.clear()
 
+        # generate some random text
+        GENSIZE = 600
+        TEMP = 0.5
+        seedfr = random.randint(0, data_test.size(0) - CONTEXT)
+        input = data_test[seedfr:seedfr + CONTEXT].to(torch.long)
+
+        if torch.cuda.is_available():
+            input = input.cuda()
+
+        # print the seed
+        strinput = model.tokenizer.decode(input)
+        print(f'[{strinput}]', end='')
+
+        outseq = []
+        for _ in range(GENSIZE):
+            output = model(input[None, :])
+            c = sample(output[0, -1, :], TEMP)
+            outseq.append(c)
+
+            input = torch.cat([input[1:], c[None]], dim=0)
+
+        outseq = torch.cat(outseq, dim=0)
+        outseq = model.tokenizer(outseq)
+
+        print(outseq)
+
         # - validate every {arg.test_every} steps. First we compute the
         #   compression on the validation (or a subset)
         #   then we generate some random text to monitor progress
@@ -278,30 +304,9 @@ def go(arg):
 
                 # print validation performance. 0.92 bit per byte is (currently) state of the art.
                 print(f'epoch{i}: {bits_per_byte:.4} bits per byte')
-                tbw.add_scalar(f'transformer/eval-loss', bits_per_byte, i * arg.batch_size)
+                tbw.add_scalar(f'podcasts/eval-loss', bits_per_byte, i * arg.batch_size)
 
-                # generate some random text
-                GENSIZE = 600
-                TEMP = 0.5
-                seedfr = random.randint(0, data_test.size(0) - CONTEXT)
-                input = data_test[seedfr:seedfr + CONTEXT].to(torch.long)
 
-                if torch.cuda.is_available():
-                    input = input.cuda()
-
-                print('[', end='', flush=True)
-                for c in input:
-                    print(str(chr(c)), end='', flush=True)
-                print(']', end='', flush=True)
-
-                for _ in range(GENSIZE):
-                    output = model(input[None, :])
-                    c = sample(output[0, -1, :], TEMP)
-                    print(str(chr(max(32, c))), end='', flush=True)
-
-                    input = torch.cat([input[1:], c[None]], dim=0)
-
-                print()
 
 if __name__ == "__main__":
         ## Parse the command line options
