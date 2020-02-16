@@ -482,9 +482,9 @@ def go_pods(arg):
             for _ in range(arg.print_size):
                 output = model(input[None, :])
                 c = sample(output[0, -1, :], arg.sampling_temp)
-                outseq.append(c[None])
+                outseq.append(c.cpu()[None])
 
-                input = torch.cat([input, c[None]], dim=0)
+                input = torch.cat([input.cpu(), c.cpu()[None]], dim=0)
 
             outseq = torch.cat(outseq, dim=0)
             outseq = model.tokenizer.decode(outseq)
