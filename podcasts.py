@@ -130,7 +130,8 @@ class GPT2Wrapper(nn.Module):
     def forward(self, x, cond=None):
 
         if cond is not None:
-            cond = self.to_cond(cond)
+            with torch.no_grad():
+                cond = self.to_cond(cond)
 
             for block in self.iblocks:
                 block.set_conditional(cond)
@@ -449,8 +450,6 @@ def go_pods(arg):
             # sch.step()
 
             del loss, source, target, genres
-            for param in model.to_cond.parameters():
-                del param.grad
             model.clear()
 
             # for obj in gc.get_objects():
