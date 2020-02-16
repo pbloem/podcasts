@@ -65,8 +65,8 @@ class IBlock(nn.Module):
         b, l, e = x.size()
 
         if self.cond is not None:
-            assert self.cond.size() == b, e
-            xc = x + self.cond[b, None, e]
+            assert self.cond.size() == (b, e), f'{self.cond.size()} versus {b, e}'
+            xc = x + self.cond[:, None, :]
         else:
             xc = x
 
@@ -335,8 +335,8 @@ def tobatch(df, tokenizer, g2i, normalize_genres=True):
     strings = []
 
     for row in range(len(df)):
-        name = df['Name'][row]
-        desc = df['Description'][row]
+        name = df.iloc[row]['Name']
+        desc = df.iloc[row]['Description']
 
         desc = desc.replace('\n', '')
         strings.append(f'description: {desc} \n title: {name}')
@@ -347,7 +347,8 @@ def tobatch(df, tokenizer, g2i, normalize_genres=True):
 
     # pad to max
     mx = max([len(id) for id in ids])
-    ids = [id + ([tokenizer.pad_token_id]) * mx - len(id) for id in ids]
+    ids = [id + ( [0] * (mx - len(id)) ) for id in ids]
+    # I think zero should work as a pad token
 
     ids = [torch.tensor(id)[None, :] for id in ids]
     ids = torch.cat(ids, dim=0)
@@ -357,7 +358,7 @@ def tobatch(df, tokenizer, g2i, normalize_genres=True):
     genres = torch.zeros(ids.size(0), ng)
 
     for row in range(len(df)):
-        dfgs = [int(g) for g in eval(df['Genre IDs'][row])]
+        dfgs = [int(g) for g in eval(df.iloc[row]['Genre IDs'])]
         for intg in dfgs:
             genres[row, g2i[intg]] = 0
 
@@ -404,6 +405,7 @@ def go_pods(arg):
 
     # training loop
     # -- note: we don't loop over the data, instead we sample a batch of random subsequences each time.
+    seen = 0
     for e in range(arg.epochs):
         for fr in tqdm.trange(0, len(train), arg.batch_size):
 
@@ -412,18 +414,20 @@ def go_pods(arg):
             dfbatch = df.iloc[fr:to]
             texts, genres = tobatch(dfbatch, tok, g2i)
             b = texts.size(0)
-            source = torch.cat([torch.empty(b, 1).fill_(tok.start_token_id), texts], dim=1)
-            target = torch.cat([texts, torch.empty(b, 1).fill_(tok.pad_token_id)], dim=1)
+            source = torch.cat([torch.empty(b, 1, dtype=torch.long).fill_(0), texts], dim=1)
+            target = torch.cat([texts, torch.empty(b, 1, dtype=torch.long).fill_(0)], dim=1)
+
+            seen += b
 
             opt.zero_grad()
 
             if torch.cuda.is_available():
                 source, target, genres = source.to('cuda'), target.to('cuda'), genres.to('cuda')
 
-            output = model(source, conditional=genres)
+            output = model(source, cond=genres)
 
             loss = F.cross_entropy(output.transpose(2, 1), target, reduction='mean')
-            tbw.add_scalar('podcasts/train-loss', float(loss.item()) * LOG2E, i * arg.batch_size)
+            tbw.add_scalar('podcasts/train-loss', float(loss.item()) * LOG2E, seen)
 
             loss.backward()
 
@@ -521,7 +525,8 @@ def go_pods(arg):
 
 
 if __name__ == "__main__":
-        ## Parse the command line options
+
+    # Parse the command line options
     parser = ArgumentParser()
 
     parser.add_argument("--pods",
