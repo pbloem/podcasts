@@ -58,6 +58,8 @@ class IBlock(nn.Module):
         self.block = TransformerBlock(*args, **kwargs)
         self.mult = nn.Parameter(torch.tensor([mult]))
 
+        self.cond = [None]
+
     def set_conditional(self, cond):
 
         self.cond = [cond]
@@ -66,7 +68,7 @@ class IBlock(nn.Module):
 
         b, l, e = x.size()
 
-        if self.cond is not None:
+        if self.cond is not None and self.cond[0] is not None:
             assert self.cond[0].size() == (b, e), f'{self.cond[0].size()} versus {b, e}'
             xc = x + self.cond[0][:, None, :]
         else:
@@ -79,6 +81,7 @@ class IBlock(nn.Module):
 
     def clear(self):
         del self.cond
+        self.cond = [None]
 
 class GPT2Wrapper(nn.Module):
 
@@ -128,8 +131,8 @@ class GPT2Wrapper(nn.Module):
         if cond is not None:
             cond = self.to_cond(cond)
 
-        for block in self.iblocks:
-            block.set_conditional(cond)
+            for block in self.iblocks:
+                block.set_conditional(cond)
 
         x = self.model(x, head_mask=self.head_mask)[0]
 
