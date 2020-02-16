@@ -441,8 +441,8 @@ def go_pods(arg):
             opt.step()
             # sch.step()
 
-            model.clear()
             del loss, source, target, genres
+            model.clear()
 
             # for obj in gc.get_objects():
             #     try:
