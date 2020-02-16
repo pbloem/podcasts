@@ -418,7 +418,7 @@ def go_pods(arg):
     seen = 0
     for e in range(arg.epochs):
         for fr in tqdm.trange(0, len(train), arg.batch_size):
-
+            break
             to = min(len(train), fr+arg.batch_size)
 
             dfbatch = df.iloc[fr:to]
@@ -482,9 +482,9 @@ def go_pods(arg):
             for _ in range(arg.print_size):
                 output = model(input[None, :])
                 c = sample(output[0, -1, :], arg.sampling_temp)
-                outseq.append(c.cpu()[None])
+                outseq.append(c[None])
 
-                input = torch.cat([input.cpu(), c.cpu()[None]], dim=0)
+                input = torch.cat([input, c[None]], dim=0)
 
             outseq = torch.cat(outseq, dim=0)
             outseq = model.tokenizer.decode(outseq)
