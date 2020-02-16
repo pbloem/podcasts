@@ -1,6 +1,12 @@
 import torch
+
+from torch import nn
+import torch.nn.functional as F
+
 from pytorch_pretrained_biggan import (BigGAN, one_hot_from_names, truncated_noise_sample,
                                        save_as_images, display_in_terminal)
+
+
 
 # OPTIONAL: if you want to have more information on what's happening, activate the logger as follows
 import logging
@@ -17,6 +23,9 @@ noise_vector = truncated_noise_sample(truncation=truncation, batch_size=3)
 # All in tensors
 noise_vector = torch.from_numpy(noise_vector)
 class_vector = torch.from_numpy(class_vector)
+
+class_vector = class_vector + torch.randn(size=class_vector.size())
+class_vector = F.softmax(class_vector, dim=1)
 
 # If you have a GPU, put everything on cuda
 if torch.cuda.is_available():
