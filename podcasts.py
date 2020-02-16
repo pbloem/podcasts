@@ -48,10 +48,11 @@ class IBlock(nn.Module):
     to be registered prior to forward.
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, mult=0.0, **kwargs):
 
         super().__init__()
         self.block = TransformerBlock(*args, **kwargs)
+        self.mult = nn.Parameter(torch.tensor([mult]))
 
     def set_conditional(self, cond):
 
@@ -63,9 +64,11 @@ class IBlock(nn.Module):
 
         if self.cond is not None:
             assert self.cond.size() == b, e
-            x = x + self.cond[b, None, e]
+            xc = x + self.cond[b, None, e]
+        else:
+            xc = x
 
-        r = self.block(x)
+        r = self.block(xc) + self.mult * x
 
         # print(r.size())
         return r, None, None
@@ -322,7 +325,7 @@ if __name__ == "__main__":
     parser.add_argument("--num_batches",
                         dest="num_batches",
                         help="Number of batches to train for.",
-                        default=10_000, type=int)
+                        default=1_000_000, type=int)
 
     parser.add_argument("-i", "--iblocks",
                         dest="iblocks",
