@@ -334,6 +334,7 @@ def go(arg):
                 tbw.add_scalar(f'podcasts/eval-loss', bits_per_byte, i * arg.batch_size)
 
 
+MAX_DESC = 2000 # max description length in characters
 def tobatch(df, tokenizer, g2i, normalize_genres=True):
 
     with torch.no_grad(): # just in case
@@ -342,7 +343,7 @@ def tobatch(df, tokenizer, g2i, normalize_genres=True):
 
         for row in range(len(df)):
             name = df.iloc[row]['Name']
-            desc = df.iloc[row]['Description']
+            desc = str(df.iloc[row]['Description'])[:MAX_DESC]
 
             desc = desc.replace('\n', '')
             strings.append(f'description: {desc} \n title: {name}')
