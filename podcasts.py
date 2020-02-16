@@ -58,15 +58,15 @@ class IBlock(nn.Module):
 
     def set_conditional(self, cond):
 
-        self.cond = cond
+        self.cond = [cond]
 
     def forward(self, x, layer_past=None, attention_mask=None, head_mask=None):
 
         b, l, e = x.size()
 
         if self.cond is not None:
-            assert self.cond.size() == (b, e), f'{self.cond.size()} versus {b, e}'
-            xc = x + self.cond[:, None, :]
+            assert self.cond[0].size() == (b, e), f'{self.cond[0].size()} versus {b, e}'
+            xc = x + self.cond[0][:, None, :]
         else:
             xc = x
 
