@@ -355,15 +355,12 @@ def tobatch(df, tokenizer, g2i, normalize_genres=True):
 
         # pad to max
         mx = min(max([len(id) for id in ids]), 1000)
-        print('', mx)
         ids = [id[:mx] + ( [0] * (mx - len(id)) ) for id in ids]
 
         # I think zero should work as a pad token
 
         ids = [torch.tensor(id)[None, :] for id in ids]
         ids = torch.cat(ids, dim=0)
-
-        print(ids.size())
 
         # batch of n-hot vectors for genres
         ng = len(g2i)
@@ -436,7 +433,7 @@ def go_pods(arg):
             if torch.cuda.is_available():
                 source, target, genres = source.to('cuda'), target.to('cuda'), genres.to('cuda')
 
-            output = model(source, cond=None)
+            output = model(source, cond=genres)
 
             loss = F.cross_entropy(output.transpose(2, 1), target, reduction='mean')
             tbw.add_scalar('podcasts/train-loss', float(loss.item()) * LOG2E, seen)
