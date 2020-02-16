@@ -440,6 +440,7 @@ def go_pods(arg):
             # sch.step()
 
             model.clear()
+            del loss
 
         # - validate every {arg.test_every} steps. First we compute the
         #   compression on the validation (or a subset)
