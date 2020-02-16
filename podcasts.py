@@ -484,7 +484,7 @@ def go_pods(arg):
                 c = sample(output[0, -1, :], arg.sampling_temp)
                 outseq.append(c[None])
 
-                input = torch.cat([input[1:], c[None]], dim=0)
+                input = torch.cat([input, c[None]], dim=0)
 
             outseq = torch.cat(outseq, dim=0)
             outseq = model.tokenizer.decode(outseq)
