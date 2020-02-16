@@ -6,6 +6,8 @@ from torch import nn
 import torch.nn.functional as F
 import torch.distributions as dist
 
+import gc
+
 from util import d, here
 
 import pandas as pd
@@ -440,7 +442,14 @@ def go_pods(arg):
             # sch.step()
 
             model.clear()
-            del loss
+            del loss, source, target, genres
+
+            # for obj in gc.get_objects():
+            #     try:
+            #         if torch.is_tensor(obj) or (hasattr(obj, 'data') and torch.is_tensor(obj.data)):
+            #             print(type(obj), obj.size())
+            #     except:
+            #         pass
 
         # - validate every {arg.test_every} steps. First we compute the
         #   compression on the validation (or a subset)
