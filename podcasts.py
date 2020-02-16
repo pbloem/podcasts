@@ -244,7 +244,7 @@ def go(arg):
         for _ in range(GENSIZE):
             output = model(input[None, :])
             c = sample(output[0, -1, :], TEMP)
-            outseq.append(c)
+            outseq.append(c[None])
 
             input = torch.cat([input[1:], c[None]], dim=0)
 
