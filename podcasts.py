@@ -1,5 +1,5 @@
 import transformers
-from transformers import GPT2Tokenizer, GPT2LMHeadModel, GPT2Model
+from transformers import GPT2Tokenizer, GPT2LMHeadModel, modeling_utils
 
 import torch
 from torch import nn
@@ -20,10 +20,11 @@ from util import *
 
 import numpy as np
 
-E = 768
+# E = 768
 LOG2E = math.log2(math.e)
-CONTEXT = 512
+# CONTEXT = 512
 # NHEADS = 12
+NUCLEUS_P = 0.9
 
 class NoParam(nn.Module):
     """
@@ -68,7 +69,7 @@ class IBlock(nn.Module):
         else:
             xc = x
 
-        r = self.block(xc) + self.mult * x
+        r = self.mult * self.block(xc) +  x
 
         # print(r.size())
         return r, None, None
@@ -78,27 +79,31 @@ class IBlock(nn.Module):
 
 class GPT2Wrapper(nn.Module):
 
-    def __init__(self, iblocks=3, gptname='gpt2', dropout=0.0):
+    def __init__(self, iblocks=3, gptname='distilgpt2', dropout=0.0):
         super().__init__()
 
         self.tokenizer = GPT2Tokenizer.from_pretrained(gptname)
-        model = GPT2Model.from_pretrained(gptname)
+        model = GPT2LMHeadModel.from_pretrained(gptname)
         model.eval()
 
+        emb = model.config.n_embd
+        self.ctx = model.config.n_ctx
+
         self.iblocks = nn.ModuleList([
-            IBlock(emb=E, heads=8, mask=True, ff_hidden_mult=4, dropout=dropout, wide=False) for _ in range(iblocks+1)
+            IBlock(emb=emb, heads=8, mask=True, ff_hidden_mult=4, dropout=dropout, wide=False) for _ in range(iblocks+1)
         ])
 
-        nb = len(model.h)      # number of GPT2 blocks
+        nb = len(model.transformer.h)      # number of GPT2 blocks
         per = nb // iblocks    # how many blocks to skip between inserted blocks
 
+        h = model.transformer.h # the main stack of transformer blocks
         for i in range(iblocks-1, -1, -1):
             print('inserting block at', i*per)
             block = self.iblocks[i]
-            model.h.insert(i*per, block)
-        model.h.insert(len(model.h), self.iblocks[-1])
+            h.insert(i*per, block)
+        h.insert(len(h), self.iblocks[-1])
 
-        self.register_buffer(name='head_mask', tensor=torch.ones(len(model.h), model.config.n_head))
+        self.register_buffer(name='head_mask', tensor=torch.ones(len(h), model.config.n_head))
         # We need to create a special head mask because we've changes the number of blocks.
 
         for param in model.parameters():
@@ -106,7 +111,8 @@ class GPT2Wrapper(nn.Module):
 
         self.model = NoParam(model)
 
-        self.head = nn.Linear(E, self.tokenizer.vocab_size) # to token probabilities
+        # Out own language model head
+        self.headbias = nn.Parameter(torch.zeros(self.tokenizer.vocab_size)) # to token probabilities
 
     def forward(self, x, cond=None):
 
@@ -115,12 +121,13 @@ class GPT2Wrapper(nn.Module):
 
         x = self.model(x, head_mask=self.head_mask)[0]
 
-        return self.head(x)
+        return x + self.headbias
 
     def clear(self):
 
         for block in self.iblocks:
             block.clear()
+
 
 def sample(lnprobs, temperature=1.0):
     """
@@ -133,6 +140,8 @@ def sample(lnprobs, temperature=1.0):
 
     if temperature == 0.0:
         return lnprobs.argmax()
+
+    modeling_utils.top_k_top_p_filtering(lnprobs[None, :], top_p=NUCLEUS_P)
 
     p = F.softmax(lnprobs / temperature, dim=0)
     cd = dist.Categorical(p)
@@ -199,9 +208,9 @@ def go(arg):
         opt.zero_grad()
 
         # sample a batch of random subsequences
-        starts = torch.randint(size=(arg.batch_size, ), low=0, high=data_train.size(0) - CONTEXT - 1)
-        seqs_source = [data_train[start  :start+CONTEXT  ] for start in starts]
-        seqs_target = [data_train[start+1:start+CONTEXT+1] for start in starts]
+        starts = torch.randint(size=(arg.batch_size, ), low=0, high=data_train.size(0) - model.ctx - 1)
+        seqs_source = [data_train[start  :start+model.ctx  ] for start in starts]
+        seqs_target = [data_train[start+1:start+model.ctx+1] for start in starts]
 
         source = torch.cat([s[None, :] for s in seqs_source ], dim=0).to(torch.long)
         target = torch.cat([s[None, :] for s in seqs_target ], dim=0).to(torch.long)
@@ -230,16 +239,14 @@ def go(arg):
         # - validate every {arg.test_every} steps. First we compute the
         #   compression on the validation (or a subset)
         #   then we generate some random text to monitor progress
-        if i != 0 and (i % arg.test_every == 0 or i == arg.num_batches - 1):
+        if i != 0 and (i % arg.print_every == 0 or i == arg.num_batches - 1):
 
             with torch.no_grad():
 
                 # generate and print some random text
-
-                GENSIZE = 600
                 TEMP = 0.5
-                seedfr = random.randint(0, data_test.size(0) - CONTEXT)
-                input = data_test[seedfr:seedfr + CONTEXT].to(torch.long)
+                seedfr = random.randint(0, data_test.size(0) - arg.print_seed_size)
+                input = data_test[seedfr:seedfr + arg.print_seed_size].to(torch.long)
 
                 if torch.cuda.is_available():
                     input = input.cuda()
@@ -249,7 +256,7 @@ def go(arg):
                 print(f'[{strinput}]', end='')
 
                 outseq = []
-                for _ in range(GENSIZE):
+                for _ in range(arg.print_size):
                     output = model(input[None, :])
                     c = sample(output[0, -1, :], TEMP)
                     outseq.append(c[None])
@@ -261,7 +268,10 @@ def go(arg):
 
                 print(outseq)
 
-                # val
+        # val
+        if i != 0 and (i % arg.test_every == 0 or i == arg.num_batches - 1):
+
+            with torch.no_grad():
 
                 upto = data_test.size(0) if i == arg.num_batches - 1 else arg.test_subset
                 data_sub = data_test[:upto]
@@ -271,15 +281,15 @@ def go(arg):
 
                 for current in range(data_sub.size(0)):
 
-                    fr = max(0, current - CONTEXT)
+                    fr = max(0, current - model.ctx)
                     to = current + 1
 
                     context = data_sub[fr:to].to(torch.long)
-                    if context.size(0) < CONTEXT + 1:
-                        pad = torch.zeros(size=(CONTEXT + 1 - context.size(0),), dtype=torch.long)
+                    if context.size(0) < model.ctx + 1:
+                        pad = torch.zeros(size=(model.ctx + 1 - context.size(0),), dtype=torch.long)
                         context = torch.cat([pad, context], dim=0)
 
-                        assert context.size(0) == CONTEXT + 1
+                        assert context.size(0) == model.ctx + 1
 
                     if torch.cuda.is_available():
                         context = context.cuda()
@@ -337,7 +347,7 @@ if __name__ == "__main__":
 
     parser.add_argument("-i", "--iblocks",
                         dest="iblocks",
-                        help="Number of trainable transformerblocks inserted.",
+                        help="Number of trainable transformer blocks inserted.",
                         default=3, type=int)
 
     parser.add_argument("-D", "--data", dest="data",
@@ -352,6 +362,21 @@ if __name__ == "__main__":
     parser.add_argument("-T", "--tb_dir", dest="tb_dir",
                         help="Tensorboard logging directory",
                         default='./runs')
+
+    parser.add_argument("--print-every",
+                        dest="print_every",
+                        help="How many batches between printing a sample.",
+                        default=1000, type=int)
+
+    parser.add_argument("--print-seed-size",
+                        dest="print_seed_size",
+                        help="The size of the sample seed.",
+                        default=100, type=int)
+
+    parser.add_argument("--print-size",
+                        dest="print_size",
+                        help="How many tokens to print in the sample.",
+                        default=600, type=int)
 
     parser.add_argument("--test-every",
                         dest="test_every",
