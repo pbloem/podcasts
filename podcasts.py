@@ -468,14 +468,15 @@ def go_pods(arg):
         with torch.no_grad():
 
             # generate and print some random text
-            input = torch.tensor(tok.encode("description: "))[None, :]
+            seed = 'description: '
+            input = torch.tensor(tok.encode(seed))
 
             if torch.cuda.is_available():
                 input = input.to('cuda')
 
             # print the seed
-            strinput = model.tokenizer.decode(input)
-            print(f'[{strinput}]', end='')
+
+            print(f'[{seed}]', end='')
 
             outseq = []
             for _ in range(arg.print_size):
