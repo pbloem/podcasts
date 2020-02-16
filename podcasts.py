@@ -449,7 +449,7 @@ def go_pods(arg):
             # sch.step()
 
             del loss, source, target, genres
-            for param in model.to_cond.parameters:
+            for param in model.to_cond.parameters():
                 del param.grad
             model.clear()
 
