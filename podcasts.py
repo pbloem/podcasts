@@ -463,32 +463,32 @@ def go_pods(arg):
         # - validate every {arg.test_every} steps. First we compute the
         #   compression on the validation (or a subset)
         #   then we generate some random text to monitor progress
-        if e != 0 and (e % arg.print_every == 0 or e == arg.num_batches - 1):
+        # if e != 0 and (e % arg.print_every == 0 or e == arg.epochs - 1):
 
-            with torch.no_grad():
+        with torch.no_grad():
 
-                # generate and print some random text
-                input = tok.encode("description: ")
+            # generate and print some random text
+            input = tok.encode("description: ")[None, :]
 
-                if torch.cuda.is_available():
-                    input = input.to('cuda')
+            if torch.cuda.is_available():
+                input = input.to('cuda')
 
-                # print the seed
-                strinput = model.tokenizer.decode(input)
-                print(f'[{strinput}]', end='')
+            # print the seed
+            strinput = model.tokenizer.decode(input)
+            print(f'[{strinput}]', end='')
 
-                outseq = []
-                for _ in range(arg.print_size):
-                    output = model(input[None, :])
-                    c = sample(output[0, -1, :], arg.sampling_temp)
-                    outseq.append(c[None])
+            outseq = []
+            for _ in range(arg.print_size):
+                output = model(input[None, :])
+                c = sample(output[0, -1, :], arg.sampling_temp)
+                outseq.append(c[None])
 
-                    input = torch.cat([input[1:], c[None]], dim=0)
+                input = torch.cat([input[1:], c[None]], dim=0)
 
-                outseq = torch.cat(outseq, dim=0)
-                outseq = model.tokenizer.decode(outseq)
+            outseq = torch.cat(outseq, dim=0)
+            outseq = model.tokenizer.decode(outseq)
 
-                print(outseq)
+            print(outseq)
 
             # val
             # if i != 0 and (i % arg.test_every == 0 or i == arg.num_batches - 1):
