@@ -354,13 +354,16 @@ def tobatch(df, tokenizer, g2i, normalize_genres=True):
             ids.append(tokenizer.encode(string))
 
         # pad to max
-        mx = min(max([len(id) for id in ids]), 1024)
+        mx = min(max([len(id) for id in ids]), 1000)
+        print('', mx)
         ids = [id[:mx] + ( [0] * (mx - len(id)) ) for id in ids]
 
         # I think zero should work as a pad token
 
         ids = [torch.tensor(id)[None, :] for id in ids]
         ids = torch.cat(ids, dim=0)
+
+        print(ids.size())
 
         # batch of n-hot vectors for genres
         ng = len(g2i)
