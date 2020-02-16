@@ -249,7 +249,7 @@ def go(arg):
             input = torch.cat([input[1:], c[None]], dim=0)
 
         outseq = torch.cat(outseq, dim=0)
-        outseq = model.tokenizer(outseq)
+        outseq = model.tokenizer.decode(outseq)
 
         print(outseq)
 
