@@ -418,7 +418,7 @@ def go_pods(arg):
     seen = 0
     for e in range(arg.epochs):
         for fr in tqdm.trange(0, len(train), arg.batch_size):
-            break
+
             to = min(len(train), fr+arg.batch_size)
 
             dfbatch = df.iloc[fr:to]
