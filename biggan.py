@@ -24,8 +24,8 @@ noise_vector = truncated_noise_sample(truncation=truncation, batch_size=3)
 noise_vector = torch.from_numpy(noise_vector)
 class_vector = torch.from_numpy(class_vector)
 
-class_vector = class_vector + 0.01 * torch.randn(size=class_vector.size())
-class_vector = F.softmax(class_vector, dim=1)
+class_vector = class_vector + 0.1 * torch.rand(size=class_vector.size())
+class_vector = class_vector / class_vector.sum(dim=1, keepdim=True)
 
 # If you have a GPU, put everything on cuda
 if torch.cuda.is_available():
