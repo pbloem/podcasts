@@ -470,12 +470,12 @@ def go_pods(arg):
             # generate and print some random text
             seed = 'description: '
             input = torch.tensor(tok.encode(seed))
+            print(input)
 
             if torch.cuda.is_available():
                 input = input.to('cuda')
 
             # print the seed
-
             print(f'[{seed}]', end='')
 
             outseq = []
