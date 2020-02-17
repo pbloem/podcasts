@@ -16,7 +16,7 @@ from modules import TransformerBlock
 
 from torch.utils.tensorboard import SummaryWriter
 
-import random, tqdm, sys, math, gzip
+import random, tqdm, sys, math, gzip, random
 
 from argparse import ArgumentParser
 from util import *
@@ -402,6 +402,11 @@ def go_pods(arg):
 
     df = pd.read_csv(here('./data/df_popular_podcasts.csv'))
 
+    with open('./data/genre_IDs.txt') as file:
+        glist = eval(file.read())
+        glist = {int(idstr) : name for (idstr, name) in glist}
+        rlist = {name : id for (id, name) in glist.items()}
+
     gs = set()
     for genres in df['Genre IDs']:
         genres = eval(genres)
@@ -431,6 +436,9 @@ def go_pods(arg):
     seen = 0
     for e in range(arg.epochs):
         for fr in tqdm.trange(0, len(train), arg.batch_size):
+
+            if fr > 3:
+                break
 
             to = min(len(train), fr+arg.batch_size)
 
@@ -481,32 +489,37 @@ def go_pods(arg):
 
         with torch.no_grad():
 
-            # generate and print some random text
-            seed = 'description: '
-            input = torch.tensor(tok.encode(seed))
+            for _ in range(10):
+                # generate a random genre
+                random_genre = random.choice(list(glist.keys()))
+                print('chosen genre ', glist[random_genre])
 
-            if torch.cuda.is_available():
-                input = input.to('cuda')
+                genres = torch.zeros(len(i2g))
+                genres[g2i[random_genre]] = 1.0
 
-            # print the seed
-            print(f'[{seed}]', end='')
+                # generate and print some random text
+                seed = 'description: '
+                input = torch.tensor(tok.encode(seed))
 
-            outseq = []
-            for _ in range(arg.print_size):
-                output = model(input[None, :])
-                c = sample(output[0, -1, :], arg.sampling_temp)
-                outseq.append(c)
-                #
-                # print(type(input), type(c))
-                # print(input)
-                # print(c)
+                if torch.cuda.is_available():
+                    input, genres = input.to('cuda'), genres.to('cuda')
 
-                input = torch.cat([input, c], dim=0)
+                # print the seed
+                print(f'[{seed}]', end='')
 
-            outseq = torch.cat(outseq, dim=0)
-            outseq = model.tokenizer.decode(outseq)
+                outseq = []
+                for _ in range(arg.print_size):
+                    output = model(input[None, :])
+                    c = sample(output[0, -1, :], arg.sampling_temp)
+                    outseq.append(c)
 
-            print(outseq)
+                    input = torch.cat([input, c], dim=0)
+
+                outseq = torch.cat(outseq, dim=0)
+                outseq = model.tokenizer.decode(outseq)
+
+                print(outseq)
+                print('----------------------')
 
             # val
             # if i != 0 and (i % arg.test_every == 0 or i == arg.num_batches - 1):
