@@ -402,7 +402,7 @@ def go_pods(arg):
 
     df = pd.read_csv(here('./data/df_popular_podcasts.csv'))
 
-    with open('./data/genre_IDs.txt') as file:
+    with open(here('./data/genre_IDs.txt')) as file:
         glist = eval(file.read())
         glist = {int(idstr) : name for (idstr, name) in glist}
         rlist = {name : id for (id, name) in glist.items()}
@@ -436,9 +436,6 @@ def go_pods(arg):
     seen = 0
     for e in range(arg.epochs):
         for fr in tqdm.trange(0, len(train), arg.batch_size):
-
-            if fr > 3:
-                break
 
             to = min(len(train), fr+arg.batch_size)
 
