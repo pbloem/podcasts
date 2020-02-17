@@ -484,6 +484,10 @@ def go_pods(arg):
                 c = sample(output[0, -1, :], arg.sampling_temp)
                 outseq.append(c[None])
 
+                print(type(input), type(c))
+                print(input)
+                print(c[None])
+
                 input = torch.cat([input, c[None]], dim=0)
 
             outseq = torch.cat(outseq, dim=0)
