@@ -52,23 +52,19 @@ class IBlock(nn.Module):
     to be registered prior to forward.
     """
 
-    def __init__(self, *args, mult=0.0, **kwargs):
+    def __init__(self, *args, mult=0.0, cond=[], **kwargs):
 
         super().__init__()
         self.block = TransformerBlock(*args, **kwargs)
         self.mult = nn.Parameter(torch.tensor([mult]))
 
-        self.cond = [None]
-
-    def set_conditional(self, cond):
-
-        self.cond = [cond]
+        self.cond = cond
 
     def forward(self, x, layer_past=None, attention_mask=None, head_mask=None):
 
         b, l, e = x.size()
 
-        if self.cond is not None and self.cond[0] is not None:
+        if self.cond is not None and len(self.cond) > 0 and self.cond[0] is not None:
             assert self.cond[0].size() == (b, e), f'{self.cond[0].size()} versus {b, e}'
             xc = x + self.cond[0][:, None, :]
         else:
@@ -80,7 +76,6 @@ class IBlock(nn.Module):
         return r, None, None
 
     def clear(self):
-        del self.cond[0]
         del self.cond
         self.cond = [None]
 
@@ -96,8 +91,10 @@ class GPT2Wrapper(nn.Module):
         emb = model.config.n_embd
         self.ctx = model.config.n_ctx
 
+        self.container = []
+
         self.iblocks = nn.ModuleList([
-            IBlock(emb=emb, heads=8, mask=True, ff_hidden_mult=4, dropout=dropout, wide=False) for _ in range(iblocks+1)
+            IBlock(emb=emb, heads=8, mask=True, ff_hidden_mult=4, dropout=dropout, wide=False, cond=self.container) for _ in range(iblocks+1)
         ])
 
         nb = len(model.transformer.h)      # number of GPT2 blocks
@@ -132,10 +129,7 @@ class GPT2Wrapper(nn.Module):
         b = x.size(0)
 
         if cond is not None:
-            cond = self.to_cond(cond)
-
-            for block in self.iblocks:
-                block.set_conditional(cond)
+            self.container = [self.to_cond(cond)]
 
         x = self.model(x, head_mask=self.head_mask)[0]
         # x =  0.0 * cond.view(b, -1).sum(dim=1) #hack
