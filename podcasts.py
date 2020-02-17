@@ -166,8 +166,8 @@ def sample(lnprobs, temperature=1.0):
 
     probs = F.softmax(next_token_logits, dim=-1)
     print(probs)
-    if contains_inf(probs):
-        raise Exception(probs)
+    if contains_inf(probs) or contains_nan(probs):
+        raise Exception(f'probs {probs}, logits {next_token_logits}')
 
     next_token = torch.multinomial(probs, num_samples=1).squeeze(1)
 
