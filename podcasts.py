@@ -129,14 +129,16 @@ class GPT2Wrapper(nn.Module):
 
     def forward(self, x, cond=None):
 
+        b = x.size(0)
+
         if cond is not None:
-            with torch.no_grad():
-                cond = self.to_cond(cond)
+            cond = self.to_cond(cond)
 
             for block in self.iblocks:
                 block.set_conditional(cond)
 
         x = self.model(x, head_mask=self.head_mask)[0]
+        # x =  0.0 * cond.view(b, -1).sum(dim=1) #hack
 
         return x + self.headbias
 
@@ -384,8 +386,11 @@ def tobatch(df, tokenizer, g2i, normalize_genres=True):
 
         for row in range(len(df)):
             dfgs = [int(g) for g in eval(df.iloc[row]['Genre IDs'])]
+            if len(dfgs) == 0:
+                print(eval(df.iloc[row]['Genre IDs']))
+                raise Exception('Encountered podcast without genres.')
             for intg in dfgs:
-                genres[row, g2i[intg]] = 0
+                genres[row, g2i[intg]] = 1
 
         if normalize_genres:
             genres = genres / genres.sum(dim=1, keepdim=True)
@@ -433,10 +438,12 @@ def go_pods(arg):
     seen = 0
     for e in range(arg.epochs):
         for fr in tqdm.trange(0, len(train), arg.batch_size):
+
             to = min(len(train), fr+arg.batch_size)
 
             dfbatch = df.iloc[fr:to]
             texts, genres = tobatch(dfbatch, tok, g2i)
+
             b = texts.size(0)
             source = torch.cat([torch.empty(b, 1, dtype=torch.long).fill_(0), texts], dim=1)
             target = torch.cat([texts, torch.empty(b, 1, dtype=torch.long).fill_(0)], dim=1)
