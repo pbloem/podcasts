@@ -158,12 +158,21 @@ def sample(lnprobs, temperature=1.0):
     if temperature == 0.0:
         return lnprobs.argmax()
 
-    modeling_utils.top_k_top_p_filtering(lnprobs[None, :], top_p=NUCLEUS_P)
+    if temperature != 1.0:
+            lnprobs = lnprobs / temperature
+    # Top-p/top-k filtering
+    next_token_logits = modeling_utils.top_k_top_p_filtering(lnprobs[None, :], top_p=NUCLEUS_P)
+    # Sample
+    next_token = torch.multinomial(F.softmax(next_token_logits, dim=-1), num_samples=1).squeeze(1)
 
-    p = F.softmax(lnprobs / temperature, dim=0)
-    cd = dist.Categorical(p)
+    return next_token
 
-    return cd.sample()
+    # modeling_utils.top_k_top_p_filtering(lnprobs[None, :], top_p=NUCLEUS_P)
+    #
+    # p = F.softmax(lnprobs / temperature, dim=0)
+    # cd = dist.Categorical(p)
+    #
+    # return cd.sample()
 
 def load_text(path):
     """
@@ -470,7 +479,6 @@ def go_pods(arg):
             # generate and print some random text
             seed = 'description: '
             input = torch.tensor(tok.encode(seed))
-            print(input)
 
             if torch.cuda.is_available():
                 input = input.to('cuda')
@@ -482,13 +490,13 @@ def go_pods(arg):
             for _ in range(arg.print_size):
                 output = model(input[None, :])
                 c = sample(output[0, -1, :], arg.sampling_temp)
-                outseq.append(c[None])
+                outseq.append(c)
+                #
+                # print(type(input), type(c))
+                # print(input)
+                # print(c)
 
-                print(type(input), type(c))
-                print(input)
-                print(c[None])
-
-                input = torch.cat([input, c[None]], dim=0)
+                input = torch.cat([input, c], dim=0)
 
             outseq = torch.cat(outseq, dim=0)
             outseq = model.tokenizer.decode(outseq)
