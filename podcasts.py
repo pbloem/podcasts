@@ -8,7 +8,7 @@ import torch.distributions as dist
 
 import gc
 
-from util import d, here
+from util import d, here, contains_inf
 
 import pandas as pd
 
@@ -163,7 +163,12 @@ def sample(lnprobs, temperature=1.0):
     # Top-p/top-k filtering
     next_token_logits = modeling_utils.top_k_top_p_filtering(lnprobs[None, :], top_p=NUCLEUS_P)
     # Sample
-    next_token = torch.multinomial(F.softmax(next_token_logits, dim=-1), num_samples=1).squeeze(1)
+
+    probs = F.softmax(next_token_logits, dim=-1)
+    if contains_inf(probs):
+        raise Exception(probs)
+
+    next_token = torch.multinomial(probs, num_samples=1).squeeze(1)
 
     return next_token
 
@@ -427,7 +432,6 @@ def go_pods(arg):
     seen = 0
     for e in range(arg.epochs):
         for fr in tqdm.trange(0, len(train), arg.batch_size):
-
             to = min(len(train), fr+arg.batch_size)
 
             dfbatch = df.iloc[fr:to]

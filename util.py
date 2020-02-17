@@ -67,3 +67,21 @@ def makedirs(directory):
     except OSError as e:
         if e.errno != errno.EEXIST:
             raise
+
+def contains_nan(input):
+    if (not isinstance(input, torch.Tensor)) and isinstance(input, Iterable):
+        for i in input:
+            if contains_nan(i):
+                return True
+        return False
+    else:
+        return bool(torch.isnan(input).sum() > 0)
+#
+def contains_inf(input):
+    if (not isinstance(input, torch.Tensor)) and isinstance(input, Iterable):
+        for i in input:
+            if contains_inf(i):
+                return True
+        return False
+    else:
+        return bool(torch.isinf(input).sum() > 0)
