@@ -165,6 +165,7 @@ def sample(lnprobs, temperature=1.0):
     # Sample
 
     probs = F.softmax(next_token_logits, dim=-1)
+    print(probs)
     if contains_inf(probs):
         raise Exception(probs)
 
