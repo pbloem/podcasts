@@ -499,6 +499,8 @@ def go_pods(arg):
             if torch.cuda.is_available():
                 source, target, genres = source.to('cuda'), target.to('cuda'), genres.to('cuda')
 
+            print(source.size())
+
             output = model(source, cond=genres)
 
             loss = F.cross_entropy(output.transpose(2, 1), target, reduction='mean')
@@ -517,13 +519,13 @@ def go_pods(arg):
             del loss, source, target, genres
             model.clear()
 
-            for obj in gc.get_objects():
-                try:
-                    if torch.is_tensor(obj) or (hasattr(obj, 'data') and torch.is_tensor(obj.data)):
-                        if obj.size(0) == b:
-                            print(type(obj), obj.size())
-                except:
-                    pass
+            # for obj in gc.get_objects():
+            #     try:
+            #         if torch.is_tensor(obj) or (hasattr(obj, 'data') and torch.is_tensor(obj.data)):
+            #             if obj.size(0) == b:
+            #                 print(type(obj), obj.size())
+            #     except:
+            #         pass
 
         # - validate every {arg.test_every} steps. First we compute the
         #   compression on the validation (or a subset)
