@@ -466,6 +466,9 @@ def go_pods(arg):
     # create the model
     model = GPT2Wrapper(iblocks=arg.iblocks, csize=len(i2g))
 
+    if arg.checkpoint is not None:
+        model.load_state_dict(torch.load(arg.checkpoint))
+
     if torch.cuda.is_available():
         model.to('cuda')
         model.model.mod[0].to('cuda')
@@ -479,54 +482,6 @@ def go_pods(arg):
     # -- note: we don't loop over the data, instead we sample a batch of random subsequences each time.
     seen = 0
     for e in range(arg.epochs):
-        for fr in tqdm.trange(0, len(train), arg.batch_size):
-
-            to = min(len(train), fr+arg.batch_size)
-
-            dfbatch = df.iloc[fr:to]
-            texts, genres = tobatch(dfbatch, tok, g2i, limit=arg.desc_clip)
-
-            b = texts.size(0)
-            source = torch.cat([torch.empty(b, 1, dtype=torch.long).fill_(0), texts], dim=1)
-            target = torch.cat([texts, torch.empty(b, 1, dtype=torch.long).fill_(0)], dim=1)
-
-            seen += b
-
-            opt.zero_grad()
-
-            if torch.cuda.is_available():
-                source, target, genres = source.to('cuda'), target.to('cuda'), genres.to('cuda')
-
-            output = model(source, cond=genres)
-
-            loss = F.cross_entropy(output.transpose(2, 1), target, reduction='mean')
-            tbw.add_scalar('podcasts/train-loss', float(loss.item()) * LOG2E, seen)
-
-            loss.backward()
-
-            # clip gradients
-            # - If the total gradient vector has a length > 1, we clip it back down to 1.
-            if arg.gradient_clipping > 0.0:
-                nn.utils.clip_grad_norm_(model.parameters(), arg.gradient_clipping)
-
-            opt.step()
-            # sch.step()
-
-            del loss, source, target, genres
-            model.clear()
-
-            # for obj in gc.get_objects():
-            #     try:
-            #         if torch.is_tensor(obj) or (hasattr(obj, 'data') and torch.is_tensor(obj.data)):
-            #             if obj.size(0) == b:
-            #                 print(type(obj), obj.size())
-            #     except:
-            #         pass
-
-        # - validate every {arg.test_every} steps. First we compute the
-        #   compression on the validation (or a subset)
-        #   then we generate some random text to monitor progress
-        # if e != 0 and (e % arg.print_every == 0 or e == arg.epochs - 1):
 
         with torch.no_grad():
 
@@ -588,10 +543,66 @@ def go_pods(arg):
                 outseq = model.tokenizer.decode(outseq)
 
                 with open(f'random.e{e:03}i{i:02}.txt', 'w') as file:
-                    print('chosen genre ',  glist[random_genre], file=file)
+                    print('chosen genre ', glist[random_genre], file=file)
                     print('---------------------------------------------', file=file)
                     print(seed, file=file)
                     print(outseq, flush=True, file=file)
+
+        for fr in tqdm.trange(0, len(train), arg.batch_size):
+
+            to = min(len(train), fr+arg.batch_size)
+
+            dfbatch = df.iloc[fr:to]
+            texts, genres = tobatch(dfbatch, tok, g2i, limit=arg.desc_clip)
+
+            b = texts.size(0)
+            source = torch.cat([torch.empty(b, 1, dtype=torch.long).fill_(0), texts], dim=1)
+            target = torch.cat([texts, torch.empty(b, 1, dtype=torch.long).fill_(0)], dim=1)
+
+            seen += b
+
+            opt.zero_grad()
+
+            if torch.cuda.is_available():
+                source, target, genres = source.to('cuda'), target.to('cuda'), genres.to('cuda')
+
+            output = model(source, cond=genres)
+
+            loss = F.cross_entropy(output.transpose(2, 1), target, reduction='mean')
+            tbw.add_scalar('podcasts/train-loss', float(loss.item()) * LOG2E, seen)
+
+            loss.backward()
+
+            # clip gradients
+            # - If the total gradient vector has a length > 1, we clip it back down to 1.
+            if arg.gradient_clipping > 0.0:
+                nn.utils.clip_grad_norm_(model.parameters(), arg.gradient_clipping)
+
+            opt.step()
+            # sch.step()
+
+            del loss, source, target, genres
+            model.clear()
+
+            # for obj in gc.get_objects():
+            #     try:
+            #         if torch.is_tensor(obj) or (hasattr(obj, 'data') and torch.is_tensor(obj.data)):
+            #             if obj.size(0) == b:
+            #                 print(type(obj), obj.size())
+            #     except:
+            #         pass
+
+        torch.save(model.state_dict(), './checkpoint.model')
+
+        # - validate every {arg.test_every} steps. First we compute the
+        #   compression on the validation (or a subset)
+        #   then we generate some random text to monitor progress
+        # if e != 0 and (e % arg.print_every == 0 or e == arg.epochs - 1):
+
+        print('multipliers:')
+        for block in model.iblocks:
+            print('    ', block.mult)
+        print()
 
 
             # val
@@ -743,6 +754,13 @@ if __name__ == "__main__":
                         dest="desc_clip",
                         help="What number of characters to clip the description at.",
                         default=2000, type=int)
+
+
+    parser.add_argument("--checkpoint",
+                        dest="checkpoint",
+                        help="Load a model checkpoint to start from.",
+                        default=None, type=str)
+
 
     options = parser.parse_args()
     print('OPTIONS ', options)
