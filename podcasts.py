@@ -517,13 +517,13 @@ def go_pods(arg):
             del loss, source, target, genres
             model.clear()
 
-            # for obj in gc.get_objects():
-            #     try:
-            #         if torch.is_tensor(obj) or (hasattr(obj, 'data') and torch.is_tensor(obj.data)):
-            #             if obj.size(0) == b:
-            #                 print(type(obj), obj.size())
-            #     except:
-            #         pass
+            for obj in gc.get_objects():
+                try:
+                    if torch.is_tensor(obj) or (hasattr(obj, 'data') and torch.is_tensor(obj.data)):
+                        if obj.size(0) == b:
+                            print(type(obj), obj.size())
+                except:
+                    pass
 
         # - validate every {arg.test_every} steps. First we compute the
         #   compression on the validation (or a subset)
