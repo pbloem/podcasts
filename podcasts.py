@@ -392,8 +392,7 @@ def go(arg):
                 tbw.add_scalar(f'podcasts/eval-loss', bits_per_byte, i * arg.batch_size)
 
 
-MAX_DESC = 2000 # max description length in characters
-def tobatch(df, tokenizer, g2i, normalize_genres=True):
+def tobatch(df, tokenizer, g2i, normalize_genres=True, limit=2000):
 
     with torch.no_grad(): # just in case
         # batch of tokenized text
@@ -401,7 +400,7 @@ def tobatch(df, tokenizer, g2i, normalize_genres=True):
 
         for row in range(len(df)):
             name = df.iloc[row]['Name']
-            desc = str(df.iloc[row]['Description'])[:MAX_DESC]
+            desc = str(df.iloc[row]['Description'])[:limit]
 
             desc = desc.replace('\n', '')
             strings.append(f'description: {desc} \n title: {name}')
@@ -415,7 +414,6 @@ def tobatch(df, tokenizer, g2i, normalize_genres=True):
         ids = [id[:mx] + ( [0] * (mx - len(id)) ) for id in ids]
 
         # I think zero should work as a pad token
-
         ids = [torch.tensor(id)[None, :] for id in ids]
         ids = torch.cat(ids, dim=0)
 
@@ -486,7 +484,7 @@ def go_pods(arg):
             to = min(len(train), fr+arg.batch_size)
 
             dfbatch = df.iloc[fr:to]
-            texts, genres = tobatch(dfbatch, tok, g2i)
+            texts, genres = tobatch(dfbatch, tok, g2i, limit=arg.desc_clip)
 
             b = texts.size(0)
             source = torch.cat([torch.empty(b, 1, dtype=torch.long).fill_(0), texts], dim=1)
@@ -498,8 +496,6 @@ def go_pods(arg):
 
             if torch.cuda.is_available():
                 source, target, genres = source.to('cuda'), target.to('cuda'), genres.to('cuda')
-
-            print(source.size())
 
             output = model(source, cond=genres)
 
@@ -742,6 +738,11 @@ if __name__ == "__main__":
                         dest="sampling_temp",
                         help="Sampling temperature.",
                         default=1.0, type=float)
+
+    parser.add_argument("--desc-clip",
+                        dest="desc_clip",
+                        help="What number of characters to clip the description at.",
+                        default=2000, type=int)
 
     options = parser.parse_args()
     print('OPTIONS ', options)
