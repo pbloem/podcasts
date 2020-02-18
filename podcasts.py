@@ -29,6 +29,31 @@ LOG2E = math.log2(math.e)
 # NHEADS = 12
 NUCLEUS_P = 0.9
 
+# ['1315', 'Science & Medicine']
+# ['1304', 'Education']
+# ['1480', 'Software How-To']
+# ['1318', 'Technology']
+# ['1448', 'Tech News']
+# ['1477', 'Natural Sciences']
+# ['1468'
+PD_GENRES = [1315, 1304, 1480, 1318, 1448, 1477, 1468]
+PD_TITLE_LENTGH = 100
+PD_SEED = """description: Ever wondered when you're at the grocery store, how it's possible that there are plastic bags with three paprikas of exactly 500 grams? Or how the traffic light knows you are there and goes to green? Or, after a nice time out with friends, what the journey is of a Tikkie you send?
+
+It is all about informatics. Artificial intelligence is taking over. But how smart is the computer? Is it also creative? For instance: can it create a title, logo and tune for this new show? We will find out in the first episode!
+
+Other episodes:
+
+    Can AI help solve the mystery what happened with the missing computer genius Jim Gray? How artificial intelligence helps to solve crimes.
+
+    How do you get rich with computer science? The story of four smart students that earned millions with their new computer vision idea.
+
+    What does the Efteling now about me? How facial recognition is integrated in our everyday lives.
+
+Listen to this podcast and stumble upon captivating stories about humans and machines. Enter the fascinating world of computer science, algorithms, and artificial intelligence. 
+
+title: """
+
 class NoParam(nn.Module):
     """
     Wraps a module, stopping parameters from being registered
@@ -484,12 +509,44 @@ def go_pods(arg):
         #   then we generate some random text to monitor progress
         # if e != 0 and (e % arg.print_every == 0 or e == arg.epochs - 1):
 
+
+        # Generate 10 titles from the seed
+        genres = torch.zeros(len(i2g))
+        for genre in PD_GENRES:
+            genres[g2i[genre]] = 1.0
+
+        for i in range(10):
+
+            # generate and print some random text
+            seed = PD_SEED
+            input = torch.tensor(tok.encode(seed))
+
+            if torch.cuda.is_available():
+                input, genres = input.to('cuda'), genres.to('cuda')
+
+            outseq = []
+            for _ in range(PD_TITLE_LENTGH):
+                output = model(input[None, :])
+                c = sample(output[0, -1, :], arg.sampling_temp)
+                outseq.append(c)
+
+                input = torch.cat([input, c], dim=0)
+
+            outseq = torch.cat(outseq, dim=0)
+            outseq = model.tokenizer.decode(outseq)
+
+            with open(f'pd.e{e:03}i{i:02}.txt', 'w') as file:
+                print(outseq[len(PD_SEED):], file=file)
+                print('---------------------------------------------\n', file=file)
+
+                print(PD_SEED + outseq, file=file)
+
         with torch.no_grad():
 
-            for _ in range(10):
+            # Generate 10 random podcasts
+            for i in range(10):
                 # generate a random genre
                 random_genre = random.choice(list(glist.keys()))
-                print('chosen genre ', glist[random_genre])
 
                 genres = torch.zeros(len(i2g))
                 genres[g2i[random_genre]] = 1.0
@@ -500,9 +557,6 @@ def go_pods(arg):
 
                 if torch.cuda.is_available():
                     input, genres = input.to('cuda'), genres.to('cuda')
-
-                # print the seed
-                print(f'[{seed}]', end='')
 
                 outseq = []
                 for _ in range(arg.print_size):
@@ -515,8 +569,12 @@ def go_pods(arg):
                 outseq = torch.cat(outseq, dim=0)
                 outseq = model.tokenizer.decode(outseq)
 
-                print(outseq)
-                print('----------------------')
+                with open(f'random.e{e:03}i{i:02}.txt', 'w') as file:
+                    print('chosen genre ',  glist[random_genre], file=file)
+                    print('---------------------------------------------', file=file)
+                    print(seed, file=file)
+                    print(outseq, flush=True, file=file)
+
 
             # val
             # if i != 0 and (i % arg.test_every == 0 or i == arg.num_batches - 1):
