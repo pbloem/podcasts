@@ -100,7 +100,7 @@ class IBlock(nn.Module):
 
         if self.cond is not None and len(self.cond) > 0 and self.cond[0] is not None:
             cond = self.to_cond(self.cond[0])
-            assert cond.size() == (b, e), f'{self.cond.size()} versus {b, e}'
+            assert cond.size() == (b, e), f'{cond.size()} versus {b, e}'
 
             self.cond_out[0] = cond
 
