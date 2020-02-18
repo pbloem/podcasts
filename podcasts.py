@@ -403,7 +403,7 @@ def tobatch(df, tokenizer, g2i, normalize_genres=True, limit=2000):
             desc = str(df.iloc[row]['Description'])[:limit]
 
             desc = desc.replace('\n', '')
-            strings.append(f'description: {desc} \n title: {name}')
+            strings.append(f'description: {desc} \n title: {name} ||\n')
 
         ids = []
         for string in strings:
