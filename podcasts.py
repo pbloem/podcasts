@@ -38,18 +38,20 @@ NUCLEUS_P = 0.9
 # '1468',  Educational Technology
 PD_GENRES = [1315, 1304, 1480, 1318, 1448, 1477, 1468]
 PD_TITLE_LENTGH = 100
-PD_SEED = """description: Ever wondered when you're at the grocery store, how it's possible that there are plastic bags with three bell pepper of exactly 500 grams? Or how the traffic light knows you are there and goes to green? Or, after a nice time out with friends, what the journey is of a Tikkie you send?
-
+PD_SEED_LONG = """description: Ever wondered when you're at the grocery store, how it's possible that there are plastic bags with three bell pepper of exactly 500 grams? Or how the traffic light knows you are there and goes to green? Or, after a nice time out with friends, what the journey is of a Tikkie you send?
 It is all about informatics. Artificial intelligence is taking over. But how smart is the computer? Is it also creative? For instance: can it create a title, logo and tune for this new show? We will find out in the first episode!
 
 Other episodes:
+- Can AI help solve the mystery what happened with the missing computer genius Jim Gray? How artificial intelligence helps to solve crimes.
+- How do you get rich with computer science? The story of four smart students that earned millions with their new computer vision idea.
+- What does the Efteling know about me? How facial recognition is integrated in our everyday lives.
 
-    Can AI help solve the mystery what happened with the missing computer genius Jim Gray? How artificial intelligence helps to solve crimes.
+Listen to this podcast and stumble upon captivating stories about humans and machines. Enter the fascinating world of computer science, algorithms, and artificial intelligence. 
 
-    How do you get rich with computer science? The story of four smart students that earned millions with their new computer vision idea.
+title: """
 
-    What does the Efteling know about me? How facial recognition is integrated in our everyday lives.
-
+PD_SEED = """description: Ever wondered when you're at the grocery store, how it's possible that there are plastic bags with three bell pepper of exactly 500 grams? Or how the traffic light knows you are there and goes to green? Or, after a nice time out with friends, what the journey is of a Tikkie you send?
+It is all about informatics. Artificial intelligence is taking over. But how smart is the computer? Is it also creative? For instance: can it create a title, logo and tune for this new show? We will find out in the first episode!
 Listen to this podcast and stumble upon captivating stories about humans and machines. Enter the fascinating world of computer science, algorithms, and artificial intelligence. 
 
 title: """
@@ -422,7 +424,7 @@ def tobatch(df, tokenizer, g2i, normalize_genres=True, limit=2000, glist=None):
 
             if glist is not None:
                 dfgs = [int(g) for g in eval(df.iloc[row]['Genre IDs'])]
-                dgfs = ' '.join([glist[ig] for ig in dfgs])
+                dfgs = ', '.join([glist[ig] for ig in dfgs])
 
                 strings.append(f'description: {desc} \ngenres: {dfgs} \ntitle: {name} ||\n')
             else:
@@ -439,8 +441,6 @@ def tobatch(df, tokenizer, g2i, normalize_genres=True, limit=2000, glist=None):
         # I think zero should work as a pad token
         ids = [torch.tensor(id)[None, :] for id in ids]
         ids = torch.cat(ids, dim=0)
-
-
 
     return ids, genres
 
