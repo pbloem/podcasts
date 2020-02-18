@@ -507,7 +507,7 @@ def go_pods(arg):
                     # print(glist[genre])
                     genres[0, g2i[genre]] = 1.0
 
-                for i in range(0):
+                for i in range(10):
 
                     # generate and print some random text
                     seed = PD_SEED
@@ -534,7 +534,7 @@ def go_pods(arg):
                         print(PD_SEED + outseq, file=file)
 
                 # Generate 10 random podcasts
-                for i in range(0):
+                for i in range(10):
                     # generate a random genre
                     random_genre = random.choice(list(glist.keys()))
 
