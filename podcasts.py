@@ -477,7 +477,7 @@ def go_pods(arg):
     model = GPT2Wrapper(iblocks=arg.iblocks, csize=len(i2g), gptname=arg.gpt_name)
 
     if arg.checkpoint is not None:
-        model.load_state_dict(torch.load(arg.checkpoint))
+        model.load_state_dict(torch.load(arg.checkpoint, map_location=torch.device('cpu')))
 
     if torch.cuda.is_available():
         model.to('cuda')
