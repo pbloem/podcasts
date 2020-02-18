@@ -77,21 +77,29 @@ class IBlock(nn.Module):
     to be registered prior to forward.
     """
 
-    def __init__(self, *args, mult=0.0, cond=[], **kwargs):
+    def __init__(self, emb, *args, mult=0.0, csize=None, cond=[None], **kwargs):
 
         super().__init__()
-        self.block = TransformerBlock(*args, **kwargs)
+        self.block = TransformerBlock(emb, *args, **kwargs)
         self.mult = nn.Parameter(torch.tensor([mult]))
 
         self.cond = cond
+
+        if csize is not None:
+            self.to_cond = nn.Sequential(
+                nn.Linear(csize, 2 * csize), nn.ReLU(),
+                nn.Linear(2 * csize, emb)
+            )
 
     def forward(self, x, layer_past=None, attention_mask=None, head_mask=None):
 
         b, l, e = x.size()
 
         if self.cond is not None and len(self.cond) > 0 and self.cond[0] is not None:
-            assert self.cond[0].size() == (b, e), f'{self.cond[0].size()} versus {b, e}'
-            xc = x + self.cond[0][:, None, :]
+            cond = self.to_cond(self.cond[0])
+            assert cond.size() == (b, e), f'{self.cond.size()} versus {b, e}'
+
+            xc = x + cond[:, None, :]
         else:
             xc = x
 
@@ -113,17 +121,20 @@ class GPT2Wrapper(nn.Module):
         model = GPT2LMHeadModel.from_pretrained(gptname)
         model.eval()
 
+        for param in model.parameters():
+            param.requires_grad = False
+
         emb = model.config.n_embd
         self.ctx = model.config.n_ctx
 
-        self.container = []
+        self.container = [None]
 
         self.iblocks = nn.ModuleList([
-            IBlock(emb=emb, heads=8, mask=True, ff_hidden_mult=4, dropout=dropout, wide=False, cond=self.container) for _ in range(iblocks+1)
+            IBlock(emb=emb, heads=8, mask=True, ff_hidden_mult=4, dropout=dropout, wide=False, csize=csize, cond=self.container) for _ in range(iblocks+1)
         ])
 
-        nb = len(model.transformer.h)      # number of GPT2 blocks
-        per = nb // iblocks    # how many blocks to skip between inserted blocks
+        nb = len(model.transformer.h)   # number of GPT2 blocks
+        per = nb // iblocks             # how many blocks to skip between inserted blocks
 
         h = model.transformer.h # the main stack of transformer blocks
         for i in range(iblocks-1, -1, -1):
@@ -135,26 +146,23 @@ class GPT2Wrapper(nn.Module):
         self.register_buffer(name='head_mask', tensor=torch.ones(len(h), model.config.n_head))
         # We need to create a special head mask because we've changes the number of blocks.
 
-        for param in model.parameters():
-            param.requires_grad = False
-
         self.model = NoParam(model)
 
         # Out own language model head
         self.headbias = nn.Parameter(torch.zeros(self.tokenizer.vocab_size)) # to token probabilities
 
-        if csize is not None:
-            self.to_cond = nn.Sequential(
-                nn.Linear(csize, 2*csize), nn.ReLU(),
-                nn.Linear(2*csize, emb)
-            )
+        # if csize is not None:
+        #     self.to_cond = nn.Sequential(
+        #         nn.Linear(csize, 2*csize), nn.ReLU(),
+        #         nn.Linear(2*csize, emb)
+        #     )
 
     def forward(self, x, cond=None):
 
         b = x.size(0)
 
         if cond is not None:
-            self.container = [self.to_cond(cond)]
+            self.container[0] = cond
 
         x = self.model(x, head_mask=self.head_mask)[0]
         # x =  0.0 * cond.view(b, -1).sum(dim=1) #hack
@@ -165,7 +173,6 @@ class GPT2Wrapper(nn.Module):
 
         for block in self.iblocks:
             block.clear()
-
 
 def sample(lnprobs, temperature=1.0):
     """
@@ -509,39 +516,38 @@ def go_pods(arg):
         #   then we generate some random text to monitor progress
         # if e != 0 and (e % arg.print_every == 0 or e == arg.epochs - 1):
 
-
-        # Generate 10 titles from the seed
-        genres = torch.zeros(len(i2g))
-        for genre in PD_GENRES:
-            genres[g2i[genre]] = 1.0
-
-        for i in range(10):
-
-            # generate and print some random text
-            seed = PD_SEED
-            input = torch.tensor(tok.encode(seed))
-
-            if torch.cuda.is_available():
-                input, genres = input.to('cuda'), genres.to('cuda')
-
-            outseq = []
-            for _ in range(PD_TITLE_LENTGH):
-                output = model(input[None, :])
-                c = sample(output[0, -1, :], arg.sampling_temp)
-                outseq.append(c)
-
-                input = torch.cat([input, c], dim=0)
-
-            outseq = torch.cat(outseq, dim=0)
-            outseq = model.tokenizer.decode(outseq)
-
-            with open(f'pd.e{e:03}i{i:02}.txt', 'w') as file:
-                print(outseq[len(PD_SEED):], file=file)
-                print('---------------------------------------------\n', file=file)
-
-                print(PD_SEED + outseq, file=file)
-
         with torch.no_grad():
+
+            # Generate 10 titles from the seed
+            genres = torch.zeros(len(i2g))
+            for genre in PD_GENRES:
+                genres[g2i[genre]] = 1.0
+
+            for i in range(10):
+
+                # generate and print some random text
+                seed = PD_SEED
+                input = torch.tensor(tok.encode(seed))
+
+                if torch.cuda.is_available():
+                    input, genres = input.to('cuda'), genres.to('cuda')
+
+                outseq = []
+                for _ in range(PD_TITLE_LENTGH):
+                    output = model(input[None, :], cond=genres)
+                    c = sample(output[0, -1, :], arg.sampling_temp)
+                    outseq.append(c)
+
+                    input = torch.cat([input, c], dim=0)
+
+                outseq = torch.cat(outseq, dim=0)
+                outseq = model.tokenizer.decode(outseq)
+
+                with open(f'pd.e{e:03}i{i:02}.txt', 'w') as file:
+                    print(outseq[len(PD_SEED):], file=file)
+                    print('---------------------------------------------\n', file=file)
+
+                    print(PD_SEED + outseq, file=file)
 
             # Generate 10 random podcasts
             for i in range(10):
@@ -560,7 +566,7 @@ def go_pods(arg):
 
                 outseq = []
                 for _ in range(arg.print_size):
-                    output = model(input[None, :])
+                    output = model(input[None, :], cond=genres)
                     c = sample(output[0, -1, :], arg.sampling_temp)
                     outseq.append(c)
 
