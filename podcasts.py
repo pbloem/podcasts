@@ -584,7 +584,7 @@ def go_pods(arg):
                 source, target, genres = source.to('cuda'), target.to('cuda'), genres.to('cuda')
 
             if arg.dropout > 0.0:
-                source = F.dropout2d(tensor=source, p=arg.dropout, )
+                source = F.dropout2d(input=source, p=arg.dropout, )
                 # -- this should function as dropout1d
 
             output = model(source, cond=genres)
