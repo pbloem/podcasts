@@ -29,16 +29,16 @@ LOG2E = math.log2(math.e)
 # NHEADS = 12
 NUCLEUS_P = 0.9
 
-# ['1315', 'Science & Medicine']
-# ['1304', 'Education']
-# ['1480', 'Software How-To']
-# ['1318', 'Technology']
-# ['1448', 'Tech News']
-# ['1477', 'Natural Sciences']
-# ['1468'
+# '1315', 'Science & Medicine'
+# '1304', 'Education'
+# '1480', 'Software How-To'
+# '1318', 'Technology'
+# '1448', 'Tech News'
+# '1477', 'Natural Sciences'
+# '1468',  Educational Technology
 PD_GENRES = [1315, 1304, 1480, 1318, 1448, 1477, 1468]
 PD_TITLE_LENTGH = 100
-PD_SEED = """description: Ever wondered when you're at the grocery store, how it's possible that there are plastic bags with three paprikas of exactly 500 grams? Or how the traffic light knows you are there and goes to green? Or, after a nice time out with friends, what the journey is of a Tikkie you send?
+PD_SEED = """description: Ever wondered when you're at the grocery store, how it's possible that there are plastic bags with three bell pepper of exactly 500 grams? Or how the traffic light knows you are there and goes to green? Or, after a nice time out with friends, what the journey is of a Tikkie you send?
 
 It is all about informatics. Artificial intelligence is taking over. But how smart is the computer? Is it also creative? For instance: can it create a title, logo and tune for this new show? We will find out in the first episode!
 
@@ -48,7 +48,7 @@ Other episodes:
 
     How do you get rich with computer science? The story of four smart students that earned millions with their new computer vision idea.
 
-    What does the Efteling now about me? How facial recognition is integrated in our everyday lives.
+    What does the Efteling know about me? How facial recognition is integrated in our everyday lives.
 
 Listen to this podcast and stumble upon captivating stories about humans and machines. Enter the fascinating world of computer science, algorithms, and artificial intelligence. 
 
@@ -392,9 +392,25 @@ def go(arg):
                 tbw.add_scalar(f'podcasts/eval-loss', bits_per_byte, i * arg.batch_size)
 
 
-def tobatch(df, tokenizer, g2i, normalize_genres=True, limit=2000):
+def tobatch(df, tokenizer, g2i, normalize_genres=True, limit=2000, glist=None):
 
     with torch.no_grad(): # just in case
+
+        # batch of n-hot vectors for genres
+        ng = len(g2i)
+        genres = torch.zeros(len(df), ng)
+
+        for row in range(len(df)):
+            dfgs = [int(g) for g in eval(df.iloc[row]['Genre IDs'])]
+            if len(dfgs) == 0:
+                print(eval(df.iloc[row]['Genre IDs']))
+                raise Exception('Encountered podcast without genres.')
+            for intg in dfgs:
+                genres[row, g2i[intg]] = 1
+
+        if normalize_genres:
+            genres = genres / genres.sum(dim=1, keepdim=True)
+
         # batch of tokenized text
         strings = []
 
@@ -403,7 +419,14 @@ def tobatch(df, tokenizer, g2i, normalize_genres=True, limit=2000):
             desc = str(df.iloc[row]['Description'])[:limit]
 
             desc = desc.replace('\n', '')
-            strings.append(f'description: {desc} \n title: {name} ||\n')
+
+            if glist is not None:
+                dfgs = [int(g) for g in eval(df.iloc[row]['Genre IDs'])]
+                dgfs = ' '.join([glist[ig] for ig in dfgs])
+
+                strings.append(f'description: {desc} \ngenres: {dfgs} \ntitle: {name} ||\n')
+            else:
+                strings.append(f'description: {desc} \ntitle: {name} ||\n')
 
         ids = []
         for string in strings:
@@ -417,20 +440,7 @@ def tobatch(df, tokenizer, g2i, normalize_genres=True, limit=2000):
         ids = [torch.tensor(id)[None, :] for id in ids]
         ids = torch.cat(ids, dim=0)
 
-        # batch of n-hot vectors for genres
-        ng = len(g2i)
-        genres = torch.zeros(ids.size(0), ng)
 
-        for row in range(len(df)):
-            dfgs = [int(g) for g in eval(df.iloc[row]['Genre IDs'])]
-            if len(dfgs) == 0:
-                print(eval(df.iloc[row]['Genre IDs']))
-                raise Exception('Encountered podcast without genres.')
-            for intg in dfgs:
-                genres[row, g2i[intg]] = 1
-
-        if normalize_genres:
-            genres = genres / genres.sum(dim=1, keepdim=True)
 
     return ids, genres
 
@@ -488,9 +498,10 @@ def go_pods(arg):
             # Generate 10 titles from the seed
             genres = torch.zeros(1, len(i2g))
             for genre in PD_GENRES:
+                # print(glist[genre])
                 genres[0, g2i[genre]] = 1.0
 
-            for i in range(10):
+            for i in range(0):
 
                 # generate and print some random text
                 seed = PD_SEED
@@ -517,7 +528,7 @@ def go_pods(arg):
                     print(PD_SEED + outseq, file=file)
 
             # Generate 10 random podcasts
-            for i in range(10):
+            for i in range(0):
                 # generate a random genre
                 random_genre = random.choice(list(glist.keys()))
 
@@ -553,7 +564,7 @@ def go_pods(arg):
             to = min(len(train), fr+arg.batch_size)
 
             dfbatch = df.iloc[fr:to]
-            texts, genres = tobatch(dfbatch, tok, g2i, limit=arg.desc_clip)
+            texts, genres = tobatch(dfbatch, tok, g2i, limit=arg.desc_clip, glist=glist)
 
             b = texts.size(0)
             source = torch.cat([torch.empty(b, 1, dtype=torch.long).fill_(0), texts], dim=1)
