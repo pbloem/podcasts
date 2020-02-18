@@ -442,6 +442,11 @@ def tobatch(df, tokenizer, g2i, normalize_genres=True, limit=2000, glist=None):
         ids = [torch.tensor(id)[None, :] for id in ids]
         ids = torch.cat(ids, dim=0)
 
+    # print([ (g2i[int(strid)],strid) for strid in eval(df.iloc[row]['Genre IDs'])])
+    # print([(g2i[id], name) for id, name in glist.items()])
+    # print(dfgs)
+    # print(genres)
+
     return ids, genres
 
 def go_pods(arg):
@@ -501,7 +506,7 @@ def go_pods(arg):
                 # print(glist[genre])
                 genres[0, g2i[genre]] = 1.0
 
-            for i in range(10):
+            for i in range(0):
 
                 # generate and print some random text
                 seed = PD_SEED
@@ -528,7 +533,7 @@ def go_pods(arg):
                     print(PD_SEED + outseq, file=file)
 
             # Generate 10 random podcasts
-            for i in range(10):
+            for i in range(0):
                 # generate a random genre
                 random_genre = random.choice(list(glist.keys()))
 
