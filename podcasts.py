@@ -84,6 +84,7 @@ class IBlock(nn.Module):
         self.mult = nn.Parameter(torch.tensor([mult]))
 
         self.cond = cond
+        self.cond_out = [None]
 
         if csize is not None:
             self.to_cond = nn.Sequential(
@@ -99,7 +100,7 @@ class IBlock(nn.Module):
             cond = self.to_cond(self.cond[0])
             assert cond.size() == (b, e), f'{self.cond.size()} versus {b, e}'
 
-            self.cond_out = [cond]
+            self.cond_out[0] = cond
 
             xc = x + cond[:, None, :]
         else:
@@ -113,6 +114,8 @@ class IBlock(nn.Module):
     def clear(self):
         del self.cond_out[0]
         del self.cond_out
+        self.cond_out = [None]
+
 
         # del self.cond[0]
         # del self.cond
