@@ -486,7 +486,7 @@ def go_pods(arg):
         with torch.no_grad():
 
             # Generate 10 titles from the seed
-            genres = torch.zeros(len(i2g))
+            genres = torch.zeros(1, len(i2g))
             for genre in PD_GENRES:
                 genres[g2i[genre]] = 1.0
 
@@ -521,7 +521,7 @@ def go_pods(arg):
                 # generate a random genre
                 random_genre = random.choice(list(glist.keys()))
 
-                genres = torch.zeros(len(i2g))
+                genres = torch.zeros(1, len(i2g))
                 genres[g2i[random_genre]] = 1.0
 
                 # generate and print some random text
