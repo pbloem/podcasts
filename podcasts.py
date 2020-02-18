@@ -583,6 +583,10 @@ def go_pods(arg):
             if torch.cuda.is_available():
                 source, target, genres = source.to('cuda'), target.to('cuda'), genres.to('cuda')
 
+            if arg.dropout > 0.0:
+                source = F.dropout2d(tensor=source, p=arg.dropout, )
+                # -- this should function as dropout1d
+
             output = model(source, cond=genres)
 
             loss = F.cross_entropy(output.transpose(2, 1), target, reduction='mean')
@@ -762,6 +766,11 @@ if __name__ == "__main__":
                         help="Gradient clipping.",
                         default=1.0, type=float)
 
+    parser.add_argument("--dropout",
+                        dest="dropout",
+                        help="Word dropout on the input.",
+                        default=0.0, type=float)
+
     parser.add_argument("--sampling-temp",
                         dest="sampling_temp",
                         help="Sampling temperature.",
@@ -771,7 +780,6 @@ if __name__ == "__main__":
                         dest="desc_clip",
                         help="What number of characters to clip the description at.",
                         default=2000, type=int)
-
 
     parser.add_argument("--checkpoint",
                         dest="checkpoint",
