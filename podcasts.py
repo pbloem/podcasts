@@ -580,12 +580,12 @@ def go_pods(arg):
 
             opt.zero_grad()
 
+            if arg.dropout > 0.0:
+                source = source * torch.empty_like(source).bernoulli_(arg.dropout)
+                #-- word dropout on the input (help the model use the conditionals)
+
             if torch.cuda.is_available():
                 source, target, genres = source.to('cuda'), target.to('cuda'), genres.to('cuda')
-
-            if arg.dropout > 0.0:
-                source = F.dropout2d(input=source, p=arg.dropout, )
-                # -- this should function as dropout1d
 
             output = model(source, cond=genres)
 
