@@ -498,71 +498,72 @@ def go_pods(arg):
     seen = 0
     for e in range(arg.epochs):
 
-        with torch.no_grad():
+        if e % arg.print_every == 0:
+            with torch.no_grad():
 
-            # Generate 10 titles from the seed
-            genres = torch.zeros(1, len(i2g))
-            for genre in PD_GENRES:
-                # print(glist[genre])
-                genres[0, g2i[genre]] = 1.0
-
-            for i in range(0):
-
-                # generate and print some random text
-                seed = PD_SEED
-                input = torch.tensor(tok.encode(seed))
-
-                if torch.cuda.is_available():
-                    input, genres = input.to('cuda'), genres.to('cuda')
-
-                outseq = []
-                for _ in range(PD_TITLE_LENTGH):
-                    output = model(input[None, :], cond=genres)
-                    c = sample(output[0, -1, :], arg.sampling_temp)
-                    outseq.append(c)
-
-                    input = torch.cat([input, c], dim=0)
-
-                outseq = torch.cat(outseq, dim=0)
-                outseq = model.tokenizer.decode(outseq)
-
-                with open(f'pd.e{e:03}i{i:02}.txt', 'w') as file:
-                    print(outseq[len(PD_SEED):], file=file)
-                    print('---------------------------------------------\n', file=file)
-
-                    print(PD_SEED + outseq, file=file)
-
-            # Generate 10 random podcasts
-            for i in range(0):
-                # generate a random genre
-                random_genre = random.choice(list(glist.keys()))
-
+                # Generate 10 titles from the seed
                 genres = torch.zeros(1, len(i2g))
-                genres[0, g2i[random_genre]] = 1.0
+                for genre in PD_GENRES:
+                    # print(glist[genre])
+                    genres[0, g2i[genre]] = 1.0
 
-                # generate and print some random text
-                seed = 'description: '
-                input = torch.tensor(tok.encode(seed))
+                for i in range(0):
 
-                if torch.cuda.is_available():
-                    input, genres = input.to('cuda'), genres.to('cuda')
+                    # generate and print some random text
+                    seed = PD_SEED
+                    input = torch.tensor(tok.encode(seed))
 
-                outseq = []
-                for _ in range(arg.print_size):
-                    output = model(input[None, :], cond=genres)
-                    c = sample(output[0, -1, :], arg.sampling_temp)
-                    outseq.append(c)
+                    if torch.cuda.is_available():
+                        input, genres = input.to('cuda'), genres.to('cuda')
 
-                    input = torch.cat([input, c], dim=0)
+                    outseq = []
+                    for _ in range(PD_TITLE_LENTGH):
+                        output = model(input[None, :], cond=genres)
+                        c = sample(output[0, -1, :], arg.sampling_temp)
+                        outseq.append(c)
 
-                outseq = torch.cat(outseq, dim=0)
-                outseq = model.tokenizer.decode(outseq)
+                        input = torch.cat([input, c], dim=0)
 
-                with open(f'random.e{e:03}i{i:02}.txt', 'w') as file:
-                    print('chosen genre ', glist[random_genre], file=file)
-                    print('---------------------------------------------', file=file)
-                    print(seed, file=file)
-                    print(outseq, flush=True, file=file)
+                    outseq = torch.cat(outseq, dim=0)
+                    outseq = model.tokenizer.decode(outseq)
+
+                    with open(f'pd.e{e:03}i{i:02}.txt', 'w') as file:
+                        print(outseq[len(PD_SEED):], file=file)
+                        print('---------------------------------------------\n', file=file)
+
+                        print(PD_SEED + outseq, file=file)
+
+                # Generate 10 random podcasts
+                for i in range(0):
+                    # generate a random genre
+                    random_genre = random.choice(list(glist.keys()))
+
+                    genres = torch.zeros(1, len(i2g))
+                    genres[0, g2i[random_genre]] = 1.0
+
+                    # generate and print some random text
+                    seed = 'description: '
+                    input = torch.tensor(tok.encode(seed))
+
+                    if torch.cuda.is_available():
+                        input, genres = input.to('cuda'), genres.to('cuda')
+
+                    outseq = []
+                    for _ in range(arg.print_size):
+                        output = model(input[None, :], cond=genres)
+                        c = sample(output[0, -1, :], arg.sampling_temp)
+                        outseq.append(c)
+
+                        input = torch.cat([input, c], dim=0)
+
+                    outseq = torch.cat(outseq, dim=0)
+                    outseq = model.tokenizer.decode(outseq)
+
+                    with open(f'random.e{e:03}i{i:02}.txt', 'w') as file:
+                        print('chosen genre ', glist[random_genre], file=file)
+                        print('---------------------------------------------', file=file)
+                        print(seed, file=file)
+                        print(outseq, flush=True, file=file)
 
         for fr in tqdm.trange(0, len(train), arg.batch_size):
 
@@ -725,7 +726,7 @@ if __name__ == "__main__":
     parser.add_argument("--print-every",
                         dest="print_every",
                         help="How many batches between printing a sample.",
-                        default=1000, type=int)
+                        default=5, type=int)
 
     parser.add_argument("--print-seed-size",
                         dest="print_seed_size",
