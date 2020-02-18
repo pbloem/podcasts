@@ -99,6 +99,9 @@ class IBlock(nn.Module):
             cond = self.to_cond(self.cond[0])
             assert cond.size() == (b, e), f'{self.cond.size()} versus {b, e}'
 
+            self.cond_out = []
+            self.cond_out[0] = cond
+
             xc = x + cond[:, None, :]
         else:
             xc = x
@@ -109,8 +112,12 @@ class IBlock(nn.Module):
         return r, None, None
 
     def clear(self):
-        del self.cond
-        self.cond = [None]
+        del self.cond_out[0]
+        del self.cond_out
+
+        # del self.cond[0]
+        # del self.cond
+        # self.cond = [None]
 
 class GPT2Wrapper(nn.Module):
 
@@ -170,6 +177,10 @@ class GPT2Wrapper(nn.Module):
         return x + self.headbias
 
     def clear(self):
+
+        del self.container[0]
+        del self.container
+        self.container = [None]
 
         for block in self.iblocks:
             block.clear()
@@ -679,7 +690,7 @@ if __name__ == "__main__":
                         help="RNG seed. Negative for random",
                         default=1, type=int)
 
-    parser.add_argument("-T", "--tb_dir", dest="tb_dir",
+    parser.add_argument("-T", "--tb-dir", dest="tb_dir",
                         help="Tensorboard logging directory",
                         default='./runs')
 
