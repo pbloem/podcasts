@@ -87,10 +87,12 @@ class IBlock(nn.Module):
         self.cond_out = [None]
 
         if csize is not None:
-            self.to_cond = nn.Sequential(
-                nn.Linear(csize, 2 * csize), nn.ReLU(),
-                nn.Linear(2 * csize, emb)
-            )
+            # self.to_cond = nn.Sequential(
+            #     nn.Linear(csize, 2 * csize), nn.ReLU(),
+            #     nn.Linear(2 * csize, emb)
+            # )
+
+            self.to_cond = nn.Linear(csize, emb)
 
     def forward(self, x, layer_past=None, attention_mask=None, head_mask=None):
 
@@ -115,7 +117,6 @@ class IBlock(nn.Module):
         del self.cond_out[0]
         del self.cond_out
         self.cond_out = [None]
-
 
         # del self.cond[0]
         # del self.cond
