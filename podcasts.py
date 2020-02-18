@@ -464,7 +464,7 @@ def go_pods(arg):
     train, val, test = df.iloc[:8000], df.iloc[8000:9000], df.iloc[9000:]
 
     # create the model
-    model = GPT2Wrapper(iblocks=arg.iblocks, csize=len(i2g))
+    model = GPT2Wrapper(iblocks=arg.iblocks, csize=len(i2g), gptname=arg.gpt_name)
 
     if arg.checkpoint is not None:
         model.load_state_dict(torch.load(arg.checkpoint))
@@ -761,6 +761,10 @@ if __name__ == "__main__":
                         help="Load a model checkpoint to start from.",
                         default=None, type=str)
 
+    parser.add_argument("--gpt-name",
+                        dest="gpt_name",
+                        help="GPT2 model name.",
+                        default='distilgpt2', type=str)
 
     options = parser.parse_args()
     print('OPTIONS ', options)
