@@ -99,8 +99,7 @@ class IBlock(nn.Module):
             cond = self.to_cond(self.cond[0])
             assert cond.size() == (b, e), f'{self.cond.size()} versus {b, e}'
 
-            self.cond_out = []
-            self.cond_out[0] = cond
+            self.cond_out = [cond]
 
             xc = x + cond[:, None, :]
         else:
