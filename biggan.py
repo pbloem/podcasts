@@ -127,7 +127,7 @@ def go(arg):
     for e in range(arg.epochs):
 
         print(f'epoch {e}', end='')
-        for i, (images, _) in tqdm.tqdm(enumerate(trainloader)):
+        for i, (images, _) in tqdm.tqdm(enumerate(trainloader), total=len(trainloader)):
 
             if arg.limit is not None and i > arg.limit:
                 break
