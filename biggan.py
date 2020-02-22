@@ -167,7 +167,7 @@ def go(arg):
         # Generate images
         with torch.no_grad():
             b = 9
-            z = torch.randn(b, arg.ls)
+            z = torch.randn(b, arg.ls, device=util.d())
             output = decoder(z)
 
             output = output.to('cpu')
