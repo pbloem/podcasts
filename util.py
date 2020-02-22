@@ -100,14 +100,12 @@ def kl_loss(zmean, zsig):
 
     return kl
 
-def sample(zmean, zsig):
+def sample(zmean, zlsig, eps=None):
     b, l = zmean.size()
 
-    # sample epsilon from a standard normal distribution
-    eps = torch.randn(b, l)
+    if eps is None:
+        eps = torch.randn(b, l)
+        if torch.cuda.is_available():
+            eps = eps.cuda()
 
-    if zmean.is_cuda():
-        eps.to('cuda')
-
-    # transform eps to a sample from the given distribution
-    return zmean + eps * (zsig * 0.5).exp()
+    return zmean + eps * (zlsig * 0.5).exp()
