@@ -106,5 +106,8 @@ def sample(zmean, zsig):
     # sample epsilon from a standard normal distribution
     eps = torch.randn(b, l)
 
+    if zmean.is_cuda():
+        eps.to('cuda')
+
     # transform eps to a sample from the given distribution
     return zmean + eps * (zsig * 0.5).exp()
