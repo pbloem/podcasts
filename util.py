@@ -85,3 +85,26 @@ def contains_inf(input):
         return False
     else:
         return bool(torch.isinf(input).sum() > 0)
+
+def kl_loss(zmean, zsig):
+    b, l = zmean.size()
+
+    kl = 0.5 * torch.sum(zsig.exp() - zsig + zmean.pow(2) - 1, dim=1)
+    # -- The KL divergence between a given normal distribution and a standard normal distribution
+    #    can be rewritten this way. It's a good exercise to work this out.
+
+    assert kl.size() == (b,)
+    # -- At this point we want the loss to be a single value of each instance in the batch.
+    #    Asserts like this are a good way to document what you know about the shape of the
+    #    tensors you deal with.
+
+    return kl
+
+def sample(zmean, zsig):
+    b, l = zmean.size()
+
+    # sample epsilon from a standard normal distribution
+    eps = torch.randn(b, l)
+
+    # transform eps to a sample from the given distribution
+    return zmean + eps * (zsig * 0.5).exp()
