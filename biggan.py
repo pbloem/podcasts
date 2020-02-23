@@ -23,6 +23,65 @@ from skimage import io
 # workaround for weird bug (macos only)
 os.environ['KMP_DUPLICATE_LIB_OK']='True'
 
+class NoParam(nn.Module):
+    """
+    Wraps a module, stopping parameters from being registered
+    """
+
+    def __init__(self, mod):
+
+        super().__init__()
+        self.mod = [mod]
+
+    def cuda(self):
+        self.mod[0].cuda()
+
+    def forward(self, x, *args, **kwargs):
+
+        return self.mod[0](x, *args, **kwargs)
+
+class IBlock(nn.Module):
+    """
+    Convolution layer to be inserted into existing architecture.
+
+    """
+
+    def __init__(self, insize, *args, kernel=3, padding=1, mult=0.0, csize=None, cond=[None], **kwargs):
+        super().__init__()
+
+        c, h, w = insize
+        self.conv = nn.Conv2d(c, c, kernel_size=kernel, padding=padding)
+
+        self.mult = nn.Parameter(torch.tensor([mult]))
+
+        self.cond = cond
+        # self.cond_out = [None]
+
+        if csize is not None:
+            self.to_cond = nn.Linear(csize, c*h*w)
+
+    def forward(self, x):
+
+        b, c, h, w = x.size()
+
+        if self.cond is not None and len(self.cond) > 0 and self.cond[0] is not None:
+            cond = self.to_cond(self.cond[0]).view(b, c, h, w)
+
+            # self.cond_out[0] = cond
+
+            xc = x + cond
+        else:
+            xc = x
+
+        r = self.mult * self.conv(xc) + x
+
+        return F.relu(r)
+
+    def clear(self):
+        del self.cond_out[0]
+        del self.cond_out
+        # self.cond_out = [None]
+
 class Decoder(nn.Module):
 
     def __init__(self, zdim=256, out_channels=1, prepdepth=3, trunc=0.4):
@@ -34,8 +93,9 @@ class Decoder(nn.Module):
 
         self.zdim = zdim
 
-        self.biggan = BigGAN.from_pretrained('biggan-deep-512')
-        for param in self.biggan.parameters():
+        biggan = BigGAN.from_pretrained('biggan-deep-512')
+        biggan.eval()
+        for param in biggan.parameters():
             param.requires_grad=False
 
         # prep network maps the VAE latent dims to the GAN latent dims
@@ -46,6 +106,8 @@ class Decoder(nn.Module):
 
         prep.append(nn.Linear(zdim*2, self.ganz+self.ganclasses))
         self.prep = nn.Sequential(*prep)
+
+        self.biggan = NoParam(biggan)
 
     def forward(self, z, cond=None):
 
@@ -62,41 +124,81 @@ class Decoder(nn.Module):
 
 class Encoder(nn.Module):
 
-    def __init__(self, insize=(3, 512, 512), zdim=256, prepdepth=3):
+    def __init__(self, insize=(3, 512, 512), zdim=256, prepdepth=3, csize=None):
+
         super().__init__()
 
         c, h, w = insize
 
-        # small encoder stack for now
-        c1, c2, c3 = 4, 8, 16 # channel sizes
-        self.cnns = nn.Sequential(
-            nn.Conv2d(c,  c1, kernel_size=3, padding=1), nn.ReLU(),
-            # nn.Conv2d(c1, c1, kernel_size=3, padding=1), nn.ReLU(),
-            # nn.Conv2d(c1, c1, kernel_size=3, padding=1), nn.ReLU(),
-            nn.MaxPool2d(4),
-            nn.Conv2d(c1, c2, kernel_size=3, padding=1), nn.ReLU(),
-            # nn.Conv2d(c2, c2, kernel_size=3, padding=1), nn.ReLU(),
-            nn.MaxPool2d(4),
-            nn.Conv2d(c2, c3, kernel_size=3, padding=1), nn.ReLU(),
-            nn.MaxPool2d(4),
-        )
-        rh, rw = h // 4**3, w // 4**3
-        self.r = rh * rw * c3
+        self.container = [None]
 
-        self.toz = nn.Sequential(
-            nn.Linear(self.r, self.r // 2), nn.ReLU(),
-            nn.Linear(self.r //2, zdim * 2)
-        )
+        mobile = torch.hub.load('pytorch/vision:v0.5.0', 'mobilenet_v2', pretrained=True)
+        mobile.eval()
+        for param in mobile.parameters():
+            param.requires_grad = False
+
+
+        # 0 (32, 256, 256)
+        b1 = IBlock((32, 256, 256), csize=csize)
+
+        # 3, torch.Size([9, 24, 128, 128])
+        b2 = IBlock((24, 128, 128), csize=csize)
+
+        # 13, torch.Size([9, 96, 32, 32])
+        b3 = IBlock((96, 32, 32), csize=csize)
+
+        # 17 torch.Size([9, 320, 16, 16])
+        b4 = IBlock((320, 16, 16), csize=csize)
+
+        features = list(mobile.features)
+        # insert from the back so the indices don't change
+        features.insert(18, b4)
+        features.insert(14, b3)
+        features.insert( 4, b2)
+        features.insert( 1, b1)
+
+        mobile.features = nn.Sequential(*features)
+
+        # register iblocks for learning
+        self.iblocks = nn.ModuleList([b1, b2, b3, b4])
+
+        mobile.classifier = nn.Linear(in_features=1280, out_features=zdim*2, bias=True)
+        self.cls = mobile.classifier
+
+        self.mobile = NoParam(mobile)
+
+        # small encoder stack for now
+        # c1, c2, c3 = 4, 8, 16 # channel sizes
+        # self.cnns = nn.Sequential(
+        #     nn.Conv2d(c,  c1, kernel_size=3, padding=1), nn.ReLU(),
+        #     # nn.Conv2d(c1, c1, kernel_size=3, padding=1), nn.ReLU(),
+        #     # nn.Conv2d(c1, c1, kernel_size=3, padding=1), nn.ReLU(),
+        #     nn.MaxPool2d(4),
+        #     nn.Conv2d(c1, c2, kernel_size=3, padding=1), nn.ReLU(),
+        #     # nn.Conv2d(c2, c2, kernel_size=3, padding=1), nn.ReLU(),
+        #     nn.MaxPool2d(4),
+        #     nn.Conv2d(c2, c3, kernel_size=3, padding=1), nn.ReLU(),
+        #     nn.MaxPool2d(4),
+        # )
+        # rh, rw = h // 4**3, w // 4**3
+        # self.r = rh * rw * c3
 
     def forward(self, x, cond=None):
 
         b, c, h, w = x.size()
+        if cond is not None:
+            self.container[0] = cond
 
-        x = self.cnns(x)
-        x = x.view(b, -1)
+        return self.mobile(x)
 
-        return self.toz(x)
+    def clear(self):
 
+        del self.container[0]
+        del self.container
+        self.container = [None]
+
+        for block in self.iblocks:
+            block.clear()
 
 def go(arg):
 
