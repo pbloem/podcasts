@@ -34,6 +34,7 @@ class NoParam(nn.Module):
         self.mod = [mod]
 
     def cuda(self):
+        print('NoParam: transferring inner model to CUDA')
         self.mod[0].cuda()
 
     def forward(self, x, *args, **kwargs):
