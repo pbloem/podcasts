@@ -145,11 +145,11 @@ class Decoder(nn.Module):
 
         # prep network maps the VAE latent dims to the GAN latent dims
         prep = []
-        prep.extend([nn.Linear(zdim + (csize if csize is not None else 0), zdim*4), nn.ReLU()])
+        prep.extend([nn.Linear(zdim + (csize if csize is not None else 0), zdim*2), nn.ReLU()])
         for _ in range(prepdepth - 2):
-            prep.extend([nn.Linear(zdim * 4, zdim * 4), nn.ReLU()])
+            prep.extend([nn.Linear(zdim * 2, zdim * 2), nn.ReLU()])
 
-        prep.append(nn.Linear(zdim * 4, self.ganz+self.ganclasses))
+        prep.append(nn.Linear(zdim * 2, self.ganz+self.ganclasses))
         self.prep = nn.Sequential(*prep)
 
         b1 = IBlock((2048, 4,   4), csize=csize, cond=self.container)
