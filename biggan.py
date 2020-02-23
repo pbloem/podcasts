@@ -283,11 +283,13 @@ def go(arg):
     # Load data
     transform = tr.Compose([tr.ToTensor()]) # tr.Resize((512, 512)),
     trainset = tv.datasets.ImageFolder(root=arg.data_dir, transform=transform)
-    trainloader = torch.utils.data.DataLoader(trainset, batch_size=arg.batch_size, shuffle=True, num_workers=2)
+    trainloader = torch.utils.data.DataLoader(trainset, batch_size=arg.batch_size, shuffle=False, num_workers=2)
 
     C, H, W = 3, 512, 512
 
     df = pd.read_csv(here('./data/df_popular_podcasts.csv'))
+
+    print(df.iloc[:2])
 
     with open(here('./data/genre_IDs.txt')) as file:
         glist = eval(file.read())
