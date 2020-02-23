@@ -12,6 +12,7 @@ from argparse import ArgumentParser
 
 import os, math, sys, random, tqdm
 import util
+from util import d
 
 from torch.utils.tensorboard import SummaryWriter
 
@@ -22,6 +23,15 @@ from skimage import io
 
 # workaround for weird bug (macos only)
 os.environ['KMP_DUPLICATE_LIB_OK']='True'
+
+
+def sample_gumbel(size, eps=1e-20):
+    U = torch.rand(size, device=d())
+    return - torch.log(-torch.log(U + eps) + eps)
+
+def gs_sample(logits, temperature=0.5, dim=-1):
+    y = logits + sample_gumbel(logits.size())
+    return F.softmax(y / temperature, dim=dim)
 
 class NoParam(nn.Module):
     """
@@ -85,7 +95,7 @@ class IBlock(nn.Module):
 
 class Decoder(nn.Module):
 
-    def __init__(self, zdim=256, out_channels=1, prepdepth=3, trunc=0.4):
+    def __init__(self, zdim=256, out_channels=1, prepdepth=3, trunc=0.4, csize=None):
         super().__init__()
 
         self.ganz = 128
@@ -93,6 +103,8 @@ class Decoder(nn.Module):
         self.trunc = trunc
 
         self.zdim = zdim
+
+        self.container = [None]
 
         biggan = BigGAN.from_pretrained('biggan-deep-512')
         biggan.eval()
@@ -102,11 +114,23 @@ class Decoder(nn.Module):
         # prep network maps the VAE latent dims to the GAN latent dims
         prep = []
         prep.extend([nn.Linear(zdim, zdim*2), nn.ReLU()])
-        for _ in range(prepdepth-2):
-            prep.extend([nn.Linear(zdim*2, zdim * 2), nn.ReLU()])
+        for _ in range(prepdepth - 2):
+            prep.extend([nn.Linear(zdim * 2, zdim * 2), nn.ReLU()])
 
-        prep.append(nn.Linear(zdim*2, self.ganz+self.ganclasses))
+        prep.append(nn.Linear(zdim * 2, self.ganz+self.ganclasses))
         self.prep = nn.Sequential(*prep)
+
+        b1 = IBlock((2048, 4,   4), csize=csize, cond=self.container)
+        b2 = IBlock((1024, 16,  16), csize=csize, cond=self.container)
+        b3 = IBlock((512,  64,  64),   csize=csize, cond=self.container)
+        b4 = IBlock((128,  256, 256),  csize=csize, cond=self.container)
+
+        self.iblocks = nn.ModuleList([b1, b2, b3, b4])
+
+        biggan.generator.layers.insert(14, b4)
+        biggan.generator.layers.insert(8, b3)
+        biggan.generator.layers.insert(4, b2)
+        biggan.generator.layers.insert(0, b1)
 
         self.biggan = NoParam(biggan)
 
@@ -117,7 +141,7 @@ class Decoder(nn.Module):
         zgan = zprep[:, :self.ganz]
         zcls = zprep[:, self.ganz:]
 
-        zcls = F.softmax(zcls, dim=1)
+        zcls = gs_sample(zcls, dim=1)
 
         out = self.biggan(zgan, zcls, truncation=self.trunc)
 
@@ -140,16 +164,16 @@ class Encoder(nn.Module):
 
 
         # 0 (32, 256, 256)
-        b1 = IBlock((32, 256, 256), csize=csize)
+        b1 = IBlock((32, 256, 256), csize=csize, cond=self.container)
 
         # 3, torch.Size([9, 24, 128, 128])
-        b2 = IBlock((24, 128, 128), csize=csize)
+        b2 = IBlock((24, 128, 128), csize=csize, cond=self.container)
 
         # 13, torch.Size([9, 96, 32, 32])
-        b3 = IBlock((96, 32, 32), csize=csize)
+        b3 = IBlock((96, 32, 32), csize=csize, cond=self.container)
 
         # 17 torch.Size([9, 320, 16, 16])
-        b4 = IBlock((320, 16, 16), csize=csize)
+        b4 = IBlock((320, 16, 16), csize=csize, cond=self.container)
 
         features = list(mobile.features)
         # insert from the back so the indices don't change
@@ -233,15 +257,17 @@ def go(arg):
     for e in range(arg.epochs):
 
         print(f'epoch {e}', end='')
+        fr = 0
         for i, (images, _) in tqdm.tqdm(enumerate(trainloader), total=len(trainloader)):
-
-            if arg.limit is not None and i > arg.limit:
+            
+            if arg.limit is not None and i >= arg.limit:
                 break
 
             opt.zero_grad()
 
             b, c, h, w = images.size()
             seen += b
+            to = fr + b
 
             if torch.cuda.is_available():
                 images = images.to('cuda')
@@ -269,6 +295,8 @@ def go(arg):
 
             loss.backward()
             opt.step()
+            
+            fr += b
 
         # Generate images
         with torch.no_grad():
