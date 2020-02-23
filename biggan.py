@@ -98,7 +98,7 @@ class IBlock(nn.Module):
         self.mult = nn.Parameter(torch.tensor([mult]))
 
         self.cond = cond
-        # self.cond_out = [None]
+        self.cond_out = [None]
 
         if csize is not None:
             self.to_cond = nn.Linear(csize, c*h*w)
@@ -110,7 +110,7 @@ class IBlock(nn.Module):
         if self.cond is not None and len(self.cond) > 0 and self.cond[0] is not None:
             cond = self.to_cond(self.cond[0]).view(b, c, h, w)
 
-            # self.cond_out[0] = cond
+            self.cond_out[0] = cond
 
             xc = x + cond
         else:
@@ -123,7 +123,7 @@ class IBlock(nn.Module):
     def clear(self):
         del self.cond_out[0]
         del self.cond_out
-        # self.cond_out = [None]
+        self.cond_out = [None]
 
 class Decoder(nn.Module):
 
@@ -152,17 +152,17 @@ class Decoder(nn.Module):
         prep.append(nn.Linear(zdim * 2, self.ganz+self.ganclasses))
         self.prep = nn.Sequential(*prep)
 
-        b1 = IBlock((2048, 4,   4), csize=csize, cond=self.container)
+        # b1 = IBlock((2048, 4,   4), csize=csize, cond=self.container) # this one takes too much memory
         b2 = IBlock((1024, 16,  16), csize=csize, cond=self.container)
         b3 = IBlock((512,  64,  64),   csize=csize, cond=self.container)
         b4 = IBlock((128,  256, 256),  csize=csize, cond=self.container)
 
-        self.iblocks = nn.ModuleList([b1, b2, b3, b4])
+        self.iblocks = nn.ModuleList([b2, b3, b4])
 
         biggan.generator.layers.insert(14, b4)
         biggan.generator.layers.insert(8, b3)
         biggan.generator.layers.insert(4, b2)
-        biggan.generator.layers.insert(0, b1)
+        # biggan.generator.layers.insert(0, b1)
 
         self.biggan = NoParam(biggan)
         self.gs_temp = gs_temp
@@ -182,6 +182,15 @@ class Decoder(nn.Module):
         out = self.biggan(zgan, zcls, truncation=self.trunc)
 
         return (out + 1.0) / 2.0
+
+    def clear(self):
+
+        del self.container[0]
+        del self.container
+        self.container = [None]
+
+        for block in self.iblocks:
+            block.clear()
 
 class Encoder(nn.Module):
 
@@ -399,6 +408,10 @@ def go(arg):
             opt.step()
             
             fr += b
+
+            del loss, images, out, genres
+            encoder.clear()
+            decoder.clear()
 
         torch.save(encoder.state_dict(), './checkpoint.encoder')
         torch.save(decoder.state_dict(), './checkpoint.decoder')
