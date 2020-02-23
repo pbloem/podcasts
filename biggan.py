@@ -33,7 +33,7 @@ class NoParam(nn.Module):
         super().__init__()
         self.mod = [mod]
 
-    def cuda(self):
+    def cuda(self): # this doesn't work
         print('NoParam: transferring inner model to CUDA')
         self.mod[0].cuda()
 
@@ -224,7 +224,10 @@ def go(arg):
 
     if torch.cuda.is_available():
         encoder.to('cuda')
+        encoder.mobile.mod[0].to('cuda')
+
         decoder.to('cuda')
+        decoder.biggan.mod[0].to('cuda')
 
     seen = 0
     for e in range(arg.epochs):
