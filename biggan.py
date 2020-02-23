@@ -312,8 +312,6 @@ def go(arg):
         decoder.to('cuda')
         decoder.biggan.mod[0].to('cuda')
 
-
-
     seen = 0
     for e in range(arg.epochs):
 
@@ -325,6 +323,8 @@ def go(arg):
                 # print(glist[genre])
                 sgenres[0, g2i[genre]] = 1.0
             sgenres = F.softmax(sgenres, dim=-1)
+            if torch.cuda.is_available():
+                sgenres = sgenres.to('cuda')
 
             b = 5
             z = torch.randn(b, arg.ls, device=util.d())
