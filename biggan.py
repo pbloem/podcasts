@@ -12,7 +12,9 @@ from argparse import ArgumentParser
 
 import os, math, sys, random, tqdm
 import util
-from util import d
+from util import d, here
+
+import pandas as pd
 
 from torch.utils.tensorboard import SummaryWriter
 
@@ -20,6 +22,15 @@ import matplotlib as mpl
 mpl.use('Agg')
 
 from skimage import io
+
+# '1315', 'Science & Medicine'
+# '1304', 'Education'
+# '1480', 'Software How-To'
+# '1318', 'Technology'
+# '1448', 'Tech News'
+# '1477', 'Natural Sciences'
+# '1468',  Educational Technology
+PD_GENRES = [1315, 1304, 1480, 1318, 1448, 1477, 1468]
 
 # workaround for weird bug (macos only)
 os.environ['KMP_DUPLICATE_LIB_OK']='True'
@@ -32,6 +43,27 @@ def sample_gumbel(size, eps=1e-20):
 def gs_sample(logits, temperature=0.5, dim=-1):
     y = logits + sample_gumbel(logits.size())
     return F.softmax(y / temperature, dim=dim)
+
+def tobatch(df, g2i, normalize_genres=True, glist=None):
+
+    with torch.no_grad(): # just in case
+
+        # batch of n-hot vectors for genres
+        ng = len(g2i)
+        genres = torch.zeros(len(df), ng)
+
+        for row in range(len(df)):
+            dfgs = [int(g) for g in eval(df.iloc[row]['Genre IDs'])]
+            if len(dfgs) == 0:
+                print(eval(df.iloc[row]['Genre IDs']))
+                raise Exception('Encountered podcast without genres.')
+            for intg in dfgs:
+                genres[row, g2i[intg]] = 1
+
+        if normalize_genres:
+            genres = genres / genres.sum(dim=1, keepdim=True)
+
+    return genres
 
 class NoParam(nn.Module):
     """
@@ -95,7 +127,7 @@ class IBlock(nn.Module):
 
 class Decoder(nn.Module):
 
-    def __init__(self, zdim=256, out_channels=1, prepdepth=3, trunc=0.4, csize=None):
+    def __init__(self, zdim=256, out_channels=1, prepdepth=3, trunc=0.4, csize=None, gs_temp=0.1):
         super().__init__()
 
         self.ganz = 128
@@ -113,11 +145,11 @@ class Decoder(nn.Module):
 
         # prep network maps the VAE latent dims to the GAN latent dims
         prep = []
-        prep.extend([nn.Linear(zdim, zdim*2), nn.ReLU()])
+        prep.extend([nn.Linear(zdim + (csize if csize is not None else 0), zdim*4), nn.ReLU()])
         for _ in range(prepdepth - 2):
-            prep.extend([nn.Linear(zdim * 2, zdim * 2), nn.ReLU()])
+            prep.extend([nn.Linear(zdim * 4, zdim * 4), nn.ReLU()])
 
-        prep.append(nn.Linear(zdim * 2, self.ganz+self.ganclasses))
+        prep.append(nn.Linear(zdim * 4, self.ganz+self.ganclasses))
         self.prep = nn.Sequential(*prep)
 
         b1 = IBlock((2048, 4,   4), csize=csize, cond=self.container)
@@ -133,15 +165,19 @@ class Decoder(nn.Module):
         biggan.generator.layers.insert(0, b1)
 
         self.biggan = NoParam(biggan)
+        self.gs_temp = gs_temp
 
     def forward(self, z, cond=None):
+
+        if cond is not None:
+            z = torch.cat([z, cond], dim=-1)
 
         zprep = self.prep(z)
 
         zgan = zprep[:, :self.ganz]
         zcls = zprep[:, self.ganz:]
 
-        zcls = gs_sample(zcls, dim=1)
+        zcls = gs_sample(zcls, temperature=self.gs_temp, dim=1)
 
         out = self.biggan(zgan, zcls, truncation=self.trunc)
 
@@ -242,7 +278,30 @@ def go(arg):
 
     C, H, W = 3, 512, 512
 
-    encoder, decoder = Encoder(insize=(C, H, W), zdim=arg.ls), Decoder(zdim=arg.ls)
+    df = pd.read_csv(here('./data/df_popular_podcasts.csv'))
+
+    with open(here('./data/genre_IDs.txt')) as file:
+        glist = eval(file.read())
+        glist = {int(idstr) : name for (idstr, name) in glist}
+        rlist = {name : id for (id, name) in glist.items()}
+
+    gs = set()
+    for genres in df['Genre IDs']:
+        genres = eval(genres)
+        for genre in genres:
+            g = int(genre)
+            gs.add(g)
+
+    i2g = list(gs)
+    g2i = {g:i for i, g in enumerate(i2g)}
+
+    encoder, decoder = Encoder(insize=(C, H, W), zdim=arg.ls, csize=len(i2g)), \
+                       Decoder(zdim=arg.ls, csize=len(i2g), gs_temp=arg.gs_temp)
+
+    if arg.checkpoint is not None:
+        encoder.load_state_dict(torch.load(arg.checkpoint + '.encoder', map_location=torch.device('cpu')))
+        decoder.load_state_dict(torch.load(arg.checkpoint + '.decoder', map_location=torch.device('cpu')))
+
 
     opt = torch.optim.Adam(lr=arg.lr, params=list(encoder.parameters()) + list(decoder.parameters()))
 
@@ -253,8 +312,47 @@ def go(arg):
         decoder.to('cuda')
         decoder.biggan.mod[0].to('cuda')
 
+
+
     seen = 0
     for e in range(arg.epochs):
+
+        # Sample images
+        with torch.no_grad():
+            # Generate 10 titles from the seed
+            sgenres = torch.zeros(1, len(i2g))
+            for genre in PD_GENRES:
+                # print(glist[genre])
+                sgenres[0, g2i[genre]] = 1.0
+            sgenres = F.softmax(sgenres, dim=-1)
+
+            b = 5
+            z = torch.randn(b, arg.ls, device=util.d())
+            output = decoder(z, cond=sgenres.expand(b, len(i2g)))
+
+            output = output.to('cpu')
+
+            for i in range(b):
+                io.imsave(f'sample.{e}.{i}.png', output[i].permute(1, 2, 0).numpy(), check_contrast=False)
+
+        # Check reconstructions
+        with torch.no_grad():
+            x = next(iter(trainloader))[0]
+            dfbatch = df.iloc[:x.size(0)]
+            g = tobatch(dfbatch, g2i, glist=glist)
+
+            if torch.cuda.is_available():
+                x, g = x.to('cuda'), g.to('cuda')
+
+            z = encoder(x, cond=g)[:, :arg.ls]
+            o = decoder(z, cond=g)
+
+            o, x = o.to('cpu'), x.to('cpu')
+
+            c = torch.cat([x, o], dim=-1)
+            for i in range(c.size(0)):
+                io.imsave(f'recon.{e}.{i}.png', c[i].permute(1, 2, 0).numpy(), check_contrast=False)
+
 
         print(f'epoch {e}', end='')
         fr = 0
@@ -269,17 +367,21 @@ def go(arg):
             seen += b
             to = fr + b
 
-            if torch.cuda.is_available():
-                images = images.to('cuda')
+            # batch of genres
+            dfbatch = df.iloc[fr:to]
+            genres = tobatch(dfbatch, g2i, glist=glist)
 
-            z = encoder(images)
+            if torch.cuda.is_available():
+                images, genres = images.to('cuda'), genres.to('cuda')
+
+            z = encoder(images, cond=genres)
 
             zmean, zsig = z[:, :arg.ls], z[:, arg.ls:]
 
             klterm = util.kl_loss(zmean, zsig)
             zsample = util.sample(zmean, zsig)
 
-            out = decoder(zsample)
+            out = decoder(zsample, cond=genres)
 
             assert out.min() >= 0.0
             assert out.max() <= 1.0
@@ -298,16 +400,8 @@ def go(arg):
             
             fr += b
 
-        # Generate images
-        with torch.no_grad():
-            b = 9
-            z = torch.randn(b, arg.ls, device=util.d())
-            output = decoder(z)
-
-            output = output.to('cpu')
-
-            for i in range(b):
-                io.imsave(f'sample.{e}.{i}.png', output[i].permute(1, 2, 0).numpy(), check_contrast=False)
+        torch.save(encoder.state_dict(), './checkpoint.encoder')
+        torch.save(decoder.state_dict(), './checkpoint.decoder')
 
 if __name__ == "__main__":
 
@@ -323,6 +417,11 @@ if __name__ == "__main__":
                         dest="beta",
                         help="Multiplier for balancing KL and rec loss.",
                         default=1.0, type=float)
+
+    parser.add_argument("--gs-temp",
+                        dest="gs_temp",
+                        help="Gumbel softmax temperature.",
+                        default=0.1, type=float)
 
     parser.add_argument("-b", "--batch",
                         dest="batch_size",
