@@ -313,8 +313,10 @@ def go(arg):
         encoder.load_state_dict(torch.load(arg.checkpoint + '.encoder', map_location=torch.device('cpu')))
         decoder.load_state_dict(torch.load(arg.checkpoint + '.decoder', map_location=torch.device('cpu')))
 
+    mainparams = list(encoder.parameters()) + list(decoder.prep.parameters())
+    bganparams = list(decoder.iblocks.parameters())
 
-    opt = torch.optim.Adam(lr=arg.lr, params=list(encoder.parameters()) + list(decoder.parameters()))
+    opt = torch.optim.Adam([{'lr': arg.lr, 'params': mainparams}, {'lr': arg.lr_gan, 'params': bganparams}])
 
     if torch.cuda.is_available():
         encoder.to('cuda')
@@ -427,6 +429,11 @@ if __name__ == "__main__":
                         dest="lr",
                         help="Learning rate.",
                         default=0.0001, type=float)
+
+    parser.add_argument("--lr-gan",
+                        dest="lr_gan",
+                        help="Learning rate for the iblocks of the gan",
+                        default=0.000001, type=float)
 
     parser.add_argument("-B", "--beta",
                         dest="beta",
