@@ -417,8 +417,9 @@ def go(arg):
             encoder.clear()
             decoder.clear()
 
-        torch.save(encoder.state_dict(), './checkpoint.encoder')
-        torch.save(decoder.state_dict(), './checkpoint.decoder')
+        if arg.save_model:
+            torch.save(encoder.state_dict(), './checkpoint.encoder')
+            torch.save(decoder.state_dict(), './checkpoint.decoder')
 
 if __name__ == "__main__":
 
@@ -492,6 +493,11 @@ if __name__ == "__main__":
                         dest="checkpoint",
                         help="Load a model checkpoint to start from.",
                         default=None, type=str)
+
+    parser.add_argument("--save-model",
+                        dest="save_model",
+                        help="Load a model checkpoint to start from.",
+                        action="store_true")
 
     options = parser.parse_args()
     print('OPTIONS ', options)
