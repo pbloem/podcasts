@@ -127,7 +127,7 @@ class IBlock(nn.Module):
 
 class Decoder(nn.Module):
 
-    def __init__(self, zdim=256, out_channels=1, prepdepth=3, trunc=0.4, csize=None, gs_temp=0.1):
+    def __init__(self, zdim=256, out_channels=1, prepdepth=3, prepmult=4, trunc=0.4, csize=None, gs_temp=0.1):
         super().__init__()
 
         self.ganz = 128
@@ -145,11 +145,11 @@ class Decoder(nn.Module):
 
         # prep network maps the VAE latent dims to the GAN latent dims
         prep = []
-        prep.extend([nn.Linear(zdim + (csize if csize is not None else 0), zdim*2), nn.ReLU()])
+        prep.extend([nn.Linear(zdim + (csize if csize is not None else 0), zdim*prepmult), nn.ReLU()])
         for _ in range(prepdepth - 2):
-            prep.extend([nn.Linear(zdim * 2, zdim * 2), nn.ReLU()])
+            prep.extend([nn.Linear(zdim * prepmult, zdim * prepmult), nn.ReLU()])
 
-        prep.append(nn.Linear(zdim * 2, self.ganz+self.ganclasses))
+        prep.append(nn.Linear(zdim * prepmult, self.ganz+self.ganclasses))
         self.prep = nn.Sequential(*prep)
 
         # b1 = IBlock((2048, 4,   4), csize=csize, cond=self.container) # this one takes too much memory
@@ -194,7 +194,7 @@ class Decoder(nn.Module):
 
 class Encoder(nn.Module):
 
-    def __init__(self, insize=(3, 512, 512), zdim=256, prepdepth=3, csize=None):
+    def __init__(self, insize=(3, 512, 512), zdim=256, csize=None):
 
         super().__init__()
 
@@ -287,27 +287,30 @@ def go(arg):
 
     C, H, W = 3, 512, 512
 
-    df = pd.read_csv(here('./data/df_popular_podcasts.csv'))
+    if arg.cond:
+        df = pd.read_csv(here('./data/df_popular_podcasts.csv'))
 
-    print(df.iloc[:2])
+        with open(here('./data/genre_IDs.txt')) as file:
+            glist = eval(file.read())
+            glist = {int(idstr) : name for (idstr, name) in glist}
+            rlist = {name : id for (id, name) in glist.items()}
 
-    with open(here('./data/genre_IDs.txt')) as file:
-        glist = eval(file.read())
-        glist = {int(idstr) : name for (idstr, name) in glist}
-        rlist = {name : id for (id, name) in glist.items()}
+        gs = set()
+        for genres in df['Genre IDs']:
+            genres = eval(genres)
+            for genre in genres:
+                g = int(genre)
+                gs.add(g)
 
-    gs = set()
-    for genres in df['Genre IDs']:
-        genres = eval(genres)
-        for genre in genres:
-            g = int(genre)
-            gs.add(g)
+        i2g = list(gs)
+        g2i = {g:i for i, g in enumerate(i2g)}
 
-    i2g = list(gs)
-    g2i = {g:i for i, g in enumerate(i2g)}
+        csize = len(i2g)
+    else:
+        csize = None
 
-    encoder, decoder = Encoder(insize=(C, H, W), zdim=arg.ls, csize=len(i2g)), \
-                       Decoder(zdim=arg.ls, csize=len(i2g), gs_temp=arg.gs_temp)
+    encoder, decoder = Encoder(insize=(C, H, W), zdim=arg.ls, csize=csize), \
+                       Decoder(zdim=arg.ls, csize=csize, gs_temp=arg.gs_temp, prepdepth=arg.prepdepth, prepmult=arg.prepmult)
 
     if arg.checkpoint is not None:
         encoder.load_state_dict(torch.load(arg.checkpoint + '.encoder', map_location=torch.device('cpu')))
@@ -330,18 +333,22 @@ def go(arg):
 
         # Sample images
         with torch.no_grad():
-            # Generate 10 titles from the seed
-            sgenres = torch.zeros(1, len(i2g))
-            for genre in PD_GENRES:
-                # print(glist[genre])
-                sgenres[0, g2i[genre]] = 1.0
-            sgenres = F.softmax(sgenres, dim=-1)
-            if torch.cuda.is_available():
-                sgenres = sgenres.to('cuda')
+
+            if arg.cond:
+                sgenres = torch.zeros(1, len(i2g))
+                for genre in PD_GENRES:
+                    # print(glist[genre])
+                    sgenres[0, g2i[genre]] = 1.0
+                sgenres = F.softmax(sgenres, dim=-1)
+                if torch.cuda.is_available():
+                    sgenres = sgenres.to('cuda')
+                cond = sgenres.expand(b, len(i2g))
+            else:
+                cond = None
 
             b = 5
             z = torch.randn(b, arg.ls, device=util.d())
-            output = decoder(z, cond=sgenres.expand(b, len(i2g)))
+            output = decoder(z, cond=None)
 
             output = output.to('cpu')
 
@@ -350,12 +357,19 @@ def go(arg):
 
         # Check reconstructions
         with torch.no_grad():
+
             x = next(iter(trainloader))[0]
-            dfbatch = df.iloc[:x.size(0)]
-            g = tobatch(dfbatch, g2i, glist=glist)
+
+            if arg.cond:
+                dfbatch = df.iloc[:x.size(0)]
+                g = tobatch(dfbatch, g2i, glist=glist)
+                if torch.cuda.is_available():
+                    g =  g.to('cuda')
+            else:
+                g = None
 
             if torch.cuda.is_available():
-                x, g = x.to('cuda'), g.to('cuda')
+                x = x.to('cuda')
 
             z = encoder(x, cond=g)[:, :arg.ls]
             o = decoder(z, cond=g)
@@ -380,12 +394,18 @@ def go(arg):
             seen += b
             to = fr + b
 
-            # batch of genres
-            dfbatch = df.iloc[fr:to]
-            genres = tobatch(dfbatch, g2i, glist=glist)
+            if arg.cond:
+                # batch of genres
+                dfbatch = df.iloc[fr:to]
+                genres = tobatch(dfbatch, g2i, glist=glist)
+
+                if torch.cuda.is_available():
+                    genres = genres.to('cuda')
+            else:
+                genres = None
 
             if torch.cuda.is_available():
-                images, genres = images.to('cuda'), genres.to('cuda')
+                images = images.to('cuda')
 
             z = encoder(images, cond=genres)
 
@@ -481,6 +501,16 @@ if __name__ == "__main__":
                         help="RNG seed. Negative for random",
                         default=1, type=int)
 
+    parser.add_argument("-P", "--prepdepth",
+                        dest="prepdepth",
+                        help="How many linear layers to use to connect the VAE latent dim to the GAN latent dim",
+                        default=3, type=int)
+
+    parser.add_argument("--prepmult",
+                        dest="prepmult",
+                        help="Multiplier for the hidden layers in the prep network",
+                        default=4, type=int)
+
     parser.add_argument("-T", "--tb-dir", dest="tb_dir",
                         help="Tensorboard logging directory",
                         default='./runs')
@@ -497,6 +527,11 @@ if __name__ == "__main__":
     parser.add_argument("--save-model",
                         dest="save_model",
                         help="Load a model checkpoint to start from.",
+                        action="store_true")
+
+    parser.add_argument("--cond",
+                        dest="cond",
+                        help="Condition on the podcast genres.",
                         action="store_true")
 
     options = parser.parse_args()
