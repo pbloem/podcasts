@@ -353,7 +353,7 @@ def go(arg):
 
                 with open(f'random.e{e:03}i{i:02}.txt', 'w') as file:
 
-                    print('chosen category ', random_cat, file=file)
+                    print('chosen category', random_cat, file=file)
                     print('---------------------------------------------', file=file)
                     print(seed, file=file)
                     print(outseq, flush=True, file=file)
