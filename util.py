@@ -32,12 +32,12 @@ def mask_(matrices, maskval=0.0, mask_diagonal=True):
     :param tns:
     :return:
     """
-    if matrices.size(1) == 1 and matrices.size(2) == 1:
-        return
 
     b, h, w = matrices.size()
+    print(matrices.size())
 
     indices = torch.triu_indices(h, w, offset=0 if mask_diagonal else 1)
+    print(indices.dtype)
     matrices[:, indices[0], indices[1]] = maskval
 
 def d(tensor=None):
