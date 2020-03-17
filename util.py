@@ -36,7 +36,7 @@ def mask_(matrices, maskval=0.0, mask_diagonal=True):
     b, h, w = matrices.size()
     print(matrices.size())
 
-    indices = torch.triu_indices(h, w, offset=0 if mask_diagonal else 1)
+    indices = torch.triu_indices(h, w, offset=0 if mask_diagonal else 1, dtype=torch.long)
     print(indices.dtype)
     matrices[:, indices[0], indices[1]] = maskval
 
