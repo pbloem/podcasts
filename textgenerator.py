@@ -380,7 +380,7 @@ def go(arg):
             # -- target is the same sequence as source, except one character ahead
 
             if arg.dropout > 0.0:
-                source = source * torch.empty(source.dim(1)).bernoulli_(arg.dropout)[None, :] # token dropout
+                source = source * torch.empty(source.size(1)).bernoulli_(arg.dropout)[None, :] # token dropout
 
             # translate categories to n-hots
             cats = onehot(bcats, max_cat=max_cat)
