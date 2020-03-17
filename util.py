@@ -32,6 +32,8 @@ def mask_(matrices, maskval=0.0, mask_diagonal=True):
     :param tns:
     :return:
     """
+    if matrices.size(1) == 1 and matrices.size(2) == 1:
+        return
 
     b, h, w = matrices.size()
 

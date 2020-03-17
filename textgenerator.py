@@ -330,19 +330,19 @@ def go(arg):
                 # generate a random category
                 random_cat = random.choice(list(l2i.keys()))
 
-                genres = torch.zeros(1, max_cat + 1)
-                genres[0, l2i[random_cat]] = 1.0
+                cats = torch.zeros(1, max_cat + 1)
+                cats[0, l2i[random_cat]] = 1.0
 
                 # generate and print some random text
                 seed = START
                 input = torch.tensor(model.tokenizer.encode(seed))
 
                 if torch.cuda.is_available():
-                    input, genres = input.to('cuda'), genres.to('cuda')
+                    input, cats = input.to('cuda'), cats.to('cuda')
 
                 outseq = []
                 for _ in range(arg.print_size):
-                    output = model(input[None, :], cond=genres)
+                    output = model(input[None, :], cond=cats)
                     c = sample(output[0, -1, :], arg.sampling_temp)
                     outseq.append(c)
 
@@ -353,7 +353,7 @@ def go(arg):
 
                 with open(f'random.e{e:03}i{i:02}.txt', 'w') as file:
 
-                    print('chosen genre ', random_cat, file=file)
+                    print('chosen category ', random_cat, file=file)
                     print('---------------------------------------------', file=file)
                     print(seed, file=file)
                     print(outseq, flush=True, file=file)
