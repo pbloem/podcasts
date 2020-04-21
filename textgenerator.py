@@ -230,7 +230,7 @@ def go(arg):
             test = json.load(file)
 
         caps_train = train['pos'] + train['neg']
-        cats_train = [1] * len(train['pos']) + [0] * len(train['neg'])
+        cats_train = [[1]] * len(train['pos']) + [[0]] * len(train['neg'])
 
         pairs = zip(caps_train, cats_train)
         caps_train, cats_train = zip(*sorted(pairs, key=lambda x: len(x[0])))
@@ -260,7 +260,7 @@ def go(arg):
         if e % arg.print_every == 0:
 
             # Generate some random sequences
-            for i in range(3):
+            for i in range(arg.nrandom):
                 # generate a random category
                 random_cat = random.choice(list(l2i.keys()))
 
@@ -491,6 +491,11 @@ if __name__ == "__main__":
                         dest="desc_clip",
                         help="What number of characters to clip the description at.",
                         default=2000, type=int)
+
+    parser.add_argument("--n-random",
+                        dest="nrandom",
+                        help="How many random sequences to generate per epoch.",
+                        default=5, type=int)
 
     parser.add_argument("--checkpoint",
                         dest="checkpoint",
