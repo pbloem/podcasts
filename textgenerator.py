@@ -258,6 +258,9 @@ def go(arg):
                     c = sample(output[0, -1, :], arg.sampling_temp)
                     outseq.append(c)
 
+                    if c == model.tokenizer.bos_token_id:
+                        break
+
                     input = torch.cat([input, c], dim=0)
 
                 outseq = torch.cat(outseq, dim=0)
