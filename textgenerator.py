@@ -16,7 +16,7 @@ from modules import TransformerBlock
 
 from torch.utils.tensorboard import SummaryWriter
 
-import random, tqdm, sys, math, gzip, random, json
+import random, tqdm, sys, math, gzip, random, json, gzip
 
 from argparse import ArgumentParser
 from util import *
@@ -217,6 +217,28 @@ def go(arg):
 
             ntrain, nvalid = len(images_train), len(images_valid)
             max_cat = 90
+
+    if arg.task == 'imdb':
+
+        l2i = {'pos':1, 'neg':0}
+        i2l = {v: k for k, v in l2i.items()}
+
+        with gzip.open(f'{here()}{os.sep}data{os.sep}imdb{os.sep}imdb.train.json.gz', 'r') as file:
+            train = json.load(file)
+
+        with gzip.open(f'{here()}{os.sep}data{os.sep}imdb{os.sep}imdb.test.json.gz', 'r') as file:
+            test = json.load(file)
+
+        caps_train = train['pos'] + train['neg']
+        cats_train = [1] * len(train['pos']) + [0] * len(train['neg'])
+
+        pairs = zip(caps_train, cats_train)
+        caps_train, cats_train = zip(*sorted(pairs, key=lambda x: len(x[0])))
+
+        ntrain, _ = len(caps_train), None
+        max_cat = 1
+
+        # TODO split train into train/val, load test properly
 
     else:
         raise Exception(f'Task {arg.task} not recognized.')
