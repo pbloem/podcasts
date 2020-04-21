@@ -238,6 +238,9 @@ def go(arg):
         ntrain, _ = len(caps_train), None
         max_cat = 1
 
+        if arg.max_length is not None:
+            caps_train = [s[:arg.max_length] for s in caps_train]
+
         # TODO split train into train/val, load test properly
 
     else:
@@ -496,6 +499,11 @@ if __name__ == "__main__":
                         dest="nrandom",
                         help="How many random sequences to generate per epoch.",
                         default=5, type=int)
+
+    parser.add_argument("--max-length",
+                        dest="max_length",
+                        help="Maximum review lengths in characters.",
+                        default=None, type=int)
 
     parser.add_argument("--checkpoint",
                         dest="checkpoint",
