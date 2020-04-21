@@ -21,6 +21,8 @@ import random, tqdm, sys, math, gzip, random, json
 from argparse import ArgumentParser
 from util import *
 
+import gpt2
+
 import numpy as np
 
 # E = 768
@@ -50,122 +52,32 @@ class NoParam(nn.Module):
 
         return self.mod[0](x, *args, **kwargs)
 
-class IBlock(nn.Module):
-    """
-    Transformer block to be inserted into GPT2 stack. Allows conditionals
-    to be registered prior to forward.
-    """
-
-    def __init__(self, emb, *args, mult=0.0, csize=None, cond=[None], **kwargs):
-
-        super().__init__()
-        self.block = TransformerBlock(emb, *args, **kwargs)
-        self.mult = nn.Parameter(torch.tensor([mult]))
-
-        self.cond = cond
-        self.cond_out = [None]
-
-        if csize is not None:
-            self.to_cond = nn.Sequential(
-                nn.Linear(csize, 2 * csize), nn.ReLU(),
-                nn.Linear(2 * csize, emb)
-            )
-
-            # self.to_cond = nn.Linear(csize, emb)
-
-    def forward(self, x, layer_past=None, attention_mask=None, head_mask=None):
-
-        b, l, e = x.size()
-
-        if self.cond is not None and len(self.cond) > 0 and self.cond[0] is not None:
-            cond = self.to_cond(self.cond[0])
-            assert cond.size() == (b, e), f'{cond.size()} versus {b, e}'
-
-            self.cond_out[0] = cond
-
-            xc = x + cond[:, None, :]
-        else:
-            xc = x
-
-        r = self.mult * self.block(xc) +  x
-
-        # print(r.size())
-        return r, None, None
-
-    def clear(self):
-        del self.cond_out[0]
-        del self.cond_out
-        self.cond_out = [None]
-
-        # del self.cond[0]
-        # del self.cond
-        # self.cond = [None]
-
 class GPT2Wrapper(nn.Module):
 
     def __init__(self, iblocks=3, gptname='distilgpt2', dropout=0.0, csize=None):
         super().__init__()
 
         self.tokenizer = GPT2Tokenizer.from_pretrained(gptname, bos_token=START, pad_token=PAD, eos_token=END)
-        model = GPT2LMHeadModel.from_pretrained(gptname)
+        model = gpt2.GPT2Model.from_pretrained(gptname)
         model.eval()
 
-        for param in model.parameters():
-            param.requires_grad = False
+        model.set_iblocks(iblocks, csize, heads=8, mask=True, ff_hidden_mult=4, wide=False)
 
-        emb = model.config.n_embd
+        self.emb = model.config.n_embd
         self.ctx = model.config.n_ctx
 
-        self.container = [None]
-
-        self.iblocks = nn.ModuleList([
-            IBlock(emb=emb, heads=8, mask=True, ff_hidden_mult=4, dropout=dropout, wide=False, csize=csize, cond=self.container) for _ in range(iblocks+1)
-        ])
-
-        nb = len(model.transformer.h)   # number of GPT2 blocks
-        per = nb // iblocks             # how many blocks to skip between inserted blocks
-
-        h = model.transformer.h # the main stack of transformer blocks
-        for i in range(iblocks-1, -1, -1):
-            print('inserting block at', i*per)
-            block = self.iblocks[i]
-            h.insert(i*per, block)
-        h.insert(len(h), self.iblocks[-1])
-
-        self.register_buffer(name='head_mask', tensor=torch.ones(len(h), model.config.n_head))
-        # We need to create a special head mask because we've changes the number of blocks.
-
         self.model = NoParam(model)
+        self.iblocks = nn.ModuleList(list(model.iblocks()))
+        # -- store the iblocks separately so they get registered as parameters
 
-        # Out own language model head
-        self.headbias = nn.Parameter(torch.zeros(self.tokenizer.vocab_size)) # to token probabilities
-
-        # if csize is not None:
-        #     self.to_cond = nn.Sequential(
-        #         nn.Linear(csize, 2*csize), nn.ReLU(),
-        #         nn.Linear(2*csize, emb)
-        #     )
+        # language model head
+        self.lm_head = nn.Linear(model.config.n_embd, model.config.vocab_size, bias=True)
 
     def forward(self, x, cond=None):
 
-        b = x.size(0)
+        x = self.model(x, cond=cond)[0]
 
-        if cond is not None:
-            self.container[0] = cond
-
-        x = self.model(x, head_mask=self.head_mask)[0]
-        # x =  0.0 * cond.view(b, -1).sum(dim=1) #hack
-
-        return x + self.headbias
-
-    def clear(self):
-
-        del self.container[0]
-        del self.container
-        self.container = [None]
-
-        for block in self.iblocks:
-            block.clear()
+        return self.lm_head(x)
 
 def sample(lnprobs, temperature=1.0):
     """
@@ -325,8 +237,8 @@ def go(arg):
 
         if e % arg.print_every == 0:
 
-            # Generate 10 random podcasts
-            for i in range(10):
+            # Generate some random sequences
+            for i in range(3):
                 # generate a random category
                 random_cat = random.choice(list(l2i.keys()))
 
@@ -404,8 +316,6 @@ def go(arg):
             opt.step()
             # sch.step()
 
-            model.clear()
-
 def tobatch(df, tokenizer, g2i, normalize_genres=True, limit=2000, glist=None):
 
     with torch.no_grad(): # just in case
@@ -455,236 +365,6 @@ def tobatch(df, tokenizer, g2i, normalize_genres=True, limit=2000, glist=None):
         ids = torch.cat(ids, dim=0)
 
     return ids, genres
-
-def go_pods(arg):
-
-    if arg.seed < 0:
-        seed = random.randint(0, 1000000)
-        print('random seed: ', seed)
-    else:
-        torch.manual_seed(arg.seed)
-
-    tbw = SummaryWriter(log_dir=arg.tb_dir) # Tensorboard logging
-
-    df = pd.read_csv(here('./data/df_popular_podcasts.csv'))
-
-    with open(here('./data/genre_IDs.txt')) as file:
-        glist = eval(file.read())
-        glist = {int(idstr) : name for (idstr, name) in glist}
-        rlist = {name : id for (id, name) in glist.items()}
-
-    gs = set()
-    for genres in df['Genre IDs']:
-        genres = eval(genres)
-        for genre in genres:
-            g = int(genre)
-            gs.add(g)
-
-    i2g = list(gs)
-    g2i = {g:i for i, g in enumerate(i2g)}
-
-    train, val, test = df.iloc[:8000], df.iloc[8000:9000], df.iloc[9000:]
-
-    # create the model
-    model = GPT2Wrapper(iblocks=arg.iblocks, csize=len(i2g), gptname=arg.gpt_name)
-
-    if arg.checkpoint is not None:
-        model.load_state_dict(torch.load(arg.checkpoint, map_location=torch.device('cpu')))
-
-    if torch.cuda.is_available():
-        model.to('cuda')
-        model.model.mod[0].to('cuda')
-
-    tok = model.tokenizer
-    opt = torch.optim.Adam(lr=arg.lr, params=model.parameters())
-    # sch = torch.optim.lr_scheduler.LambdaLR(opt, lambda i: min(i / (arg.lr_warmup / arg.batch_size), 1.0))
-    # -- linear learning rate warmup
-
-    # training loop
-    # -- note: we don't loop over the data, instead we sample a batch of random subsequences each time.
-    seen = 0
-    for e in range(arg.epochs):
-
-        if e % arg.print_every == 0:
-            with torch.no_grad():
-
-                # Generate 10 titles from the seed
-                genres = torch.zeros(1, len(i2g))
-                for genre in PD_GENRES:
-                    # print(glist[genre])
-                    genres[0, g2i[genre]] = 1.0
-
-                for i in range(10):
-
-                    # generate and print some random text
-                    seed = PD_SEED
-                    input = torch.tensor(tok.encode(seed))
-
-                    if torch.cuda.is_available():
-                        input, genres = input.to('cuda'), genres.to('cuda')
-
-                    outseq = []
-                    for _ in range(PD_TITLE_LENTGH):
-                        output = model(input[None, :], cond=genres)
-                        c = sample(output[0, -1, :], arg.sampling_temp)
-                        outseq.append(c)
-
-                        input = torch.cat([input, c], dim=0)
-
-                    outseq = torch.cat(outseq, dim=0)
-                    outseq = model.tokenizer.decode(outseq)
-
-                    with open(f'pd.e{e:03}i{i:02}.txt', 'w') as file:
-                        print(outseq[len(PD_SEED):], file=file)
-                        print('---------------------------------------------\n', file=file)
-
-                        print(PD_SEED + outseq, file=file)
-
-                # Generate 10 random podcasts
-                for i in range(10):
-                    # generate a random genre
-                    random_genre = random.choice(list(glist.keys()))
-
-                    genres = torch.zeros(1, len(i2g))
-                    genres[0, g2i[random_genre]] = 1.0
-
-                    # generate and print some random text
-                    seed = 'description: '
-                    input = torch.tensor(tok.encode(seed))
-
-                    if torch.cuda.is_available():
-                        input, genres = input.to('cuda'), genres.to('cuda')
-
-                    outseq = []
-                    for _ in range(arg.print_size):
-                        output = model(input[None, :], cond=genres)
-                        c = sample(output[0, -1, :], arg.sampling_temp)
-                        outseq.append(c)
-
-                        input = torch.cat([input, c], dim=0)
-
-                    outseq = torch.cat(outseq, dim=0)
-                    outseq = model.tokenizer.decode(outseq)
-
-                    with open(f'random.e{e:03}i{i:02}.txt', 'w') as file:
-                        print('chosen genre ', glist[random_genre], file=file)
-                        print('---------------------------------------------', file=file)
-                        print(seed, file=file)
-                        print(outseq, flush=True, file=file)
-
-        for fr in tqdm.trange(0, len(train), arg.batch_size):
-
-            to = min(len(train), fr+arg.batch_size)
-
-            dfbatch = df.iloc[fr:to]
-            texts, genres = tobatch(dfbatch, tok, g2i, limit=arg.desc_clip, glist=glist)
-
-            b = texts.size(0)
-            source = torch.cat([torch.empty(b, 1, dtype=torch.long).fill_(0), texts], dim=1)
-            target = torch.cat([texts, torch.empty(b, 1, dtype=torch.long).fill_(0)], dim=1)
-
-            seen += b
-
-            opt.zero_grad()
-
-            if arg.dropout > 0.0:
-                source = source * torch.empty_like(source).bernoulli_(arg.dropout)
-                #-- word dropout on the input (help the model use the conditionals)
-
-            if torch.cuda.is_available():
-                source, target, genres = source.to('cuda'), target.to('cuda'), genres.to('cuda')
-
-            output = model(source, cond=genres)
-
-            loss = F.cross_entropy(output.transpose(2, 1), target, reduction='mean')
-            tbw.add_scalar('podcasts/train-loss', float(loss.item()) * LOG2E, seen)
-
-            loss.backward()
-
-            # clip gradients
-            # - If the total gradient vector has a length > 1, we clip it back down to 1.
-            if arg.gradient_clipping > 0.0:
-                nn.utils.clip_grad_norm_(model.parameters(), arg.gradient_clipping)
-
-            opt.step()
-            # sch.step()
-
-            del loss, source, target, genres
-            model.clear()
-
-            # for obj in gc.get_objects():
-            #     try:
-            #         if torch.is_tensor(obj) or (hasattr(obj, 'data') and torch.is_tensor(obj.data)):
-            #             if obj.size(0) == b:
-            #                 print(type(obj), obj.size())
-            #     except:
-            #         pass
-
-        torch.save(model.state_dict(), './checkpoint.model')
-
-        # - validate every {arg.test_every} steps. First we compute the
-        #   compression on the validation (or a subset)
-        #   then we generate some random text to monitor progress
-        # if e != 0 and (e % arg.print_every == 0 or e == arg.epochs - 1):
-
-        print('multipliers:')
-        for block in model.iblocks:
-            print('    ', block.mult)
-        print()
-
-
-            # val
-            # if i != 0 and (i % arg.test_every == 0 or i == arg.num_batches - 1):
-            #
-            #     with torch.no_grad():
-            #
-            #         upto = data_test.size(0) if i == arg.num_batches - 1 else arg.test_subset
-            #         data_sub = data_test[:upto]
-            #
-            #         bits, tot = 0.0, 0
-            #         batch = [] # buffer, every time it fills up, we run it through the model
-            #
-            #         for current in range(data_sub.size(0)):
-            #
-            #             fr = max(0, current - model.ctx)
-            #             to = current + 1
-            #
-            #             context = data_sub[fr:to].to(torch.long)
-            #             if context.size(0) < model.ctx + 1:
-            #                 pad = torch.zeros(size=(model.ctx + 1 - context.size(0),), dtype=torch.long)
-            #                 context = torch.cat([pad, context], dim=0)
-            #
-            #                 assert context.size(0) == model.ctx + 1
-            #
-            #             if torch.cuda.is_available():
-            #                 context = context.cuda()
-            #
-            #             batch.append(context[None, :])
-            #
-            #             if len(batch) == arg.test_batchsize or current == data_sub.size(0) - 1:
-            #
-            #                 # batch is full, run it through the model
-            #                 b = len(batch)
-            #
-            #                 all = torch.cat(batch, dim=0)
-            #                 source = all[:, :-1] # input
-            #                 target = all[:, -1]  # target values
-            #
-            #                 output = model(source)
-            #
-            #                 lnprobs = output[torch.arange(b, device=d()), -1, target]
-            #                 log2probs = lnprobs * LOG2E # convert from nats to bits
-            #
-            #                 bits += - log2probs.sum()
-            #                 batch = [] # empty buffer
-            #
-            #         bits_per_byte = bits / data_sub.size(0)
-            #
-            #         # print validation performance. 0.92 bit per byte is (currently) state of the art.
-            #         print(f'epoch{i}: {bits_per_byte:.4} bits per byte')
-            #         tbw.add_scalar(f'podcasts/eval-loss', bits_per_byte, i * arg.batch_size)
-
-
 
 if __name__ == "__main__":
 
