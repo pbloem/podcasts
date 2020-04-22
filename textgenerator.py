@@ -313,9 +313,9 @@ def go(arg):
 
             bcats = cats_train[fr:to]
             bcaps = caps_train[fr:to]
-
-            print('length of sequences in batch', [len(s) for s in bcaps])
-            print('-- total', builtins.sum([len(s) for s in bcaps]), len(bcaps))
+            #
+            # print('length of sequences in batch', [len(s) for s in bcaps])
+            # print('-- total', builtins.sum([len(s) for s in bcaps]), len(bcaps))
 
             # translate captions to tensors
             res = model.tokenizer.batch_encode_plus(bcaps, pad_to_max_length=True, max_length=max([len(s) for s in bcaps]))
