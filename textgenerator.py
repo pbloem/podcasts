@@ -133,13 +133,17 @@ def load_text(path):
         # trX, vaX, teX = np.split(X, [n_train, n_train + n_valid])
         # return torch.from_numpy(trX), torch.from_numpy(vaX), torch.from_numpy(teX)
 
-def pad_sequences(sequences, token=0):
+def pad_sequences(sequences, token=0, max_length=None):
     """
     Pads a sequences of sequences so that they're all the same length. In-place.
     :param sequences:
     :param token:
     :return:
     """
+
+    if max_length is not None:
+        sequences = [s[:max_length] for s in sequences]
+
     mx = max([len(s) for s in sequences])
 
     for seq in sequences:
@@ -327,7 +331,7 @@ def go(arg):
             # translate captions to tensors
             res = model.tokenizer.batch_encode_plus(bcaps, pad_to_max_length=True, max_length=max([len(s) for s in bcaps]))
             captions = res['input_ids']
-            pad_sequences(captions, token=model.tokenizer.pad_token_id)
+            pad_sequences(captions, token=model.tokenizer.pad_token_id, max_length=model.ctx-1)
             captions = torch.tensor(captions)
 
             b, t = captions.size()
