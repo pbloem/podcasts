@@ -20,6 +20,7 @@ import random, tqdm, sys, math, gzip, random, json, gzip
 
 from argparse import ArgumentParser
 from util import *
+import builtins
 
 import gpt2
 
@@ -238,13 +239,13 @@ def go(arg):
         ntrain, _ = len(caps_train), None
         max_cat = 1
 
-        if arg.max_length is not None:
-            caps_train = [s[:arg.max_length] for s in caps_train]
-
         # TODO split train into train/val, load test properly
 
     else:
         raise Exception(f'Task {arg.task} not recognized.')
+
+    if arg.max_length is not None:
+        caps_train = [s[:arg.max_length] for s in caps_train]
 
     # create the model
     model = GPT2Wrapper(iblocks=arg.iblocks, gptname=arg.gpt_name, csize=max_cat+1)
@@ -298,12 +299,23 @@ def go(arg):
                     print(seed, file=file)
                     print(outseq, flush=True, file=file)
 
-        for fr in tqdm.trange(0, ntrain, arg.batch):
+        fr = 0
+        while fr < ntrain:
 
-            to = min(fr + arg.batch, ntrain)
+            if arg.batch_char is None:
+                # -- fixed nr of sequences per batch
+                to = min(fr + arg.batch, ntrain)
+            else:
+                sum, to = 0, fr
+                while sum < arg.batch_char and to < len(caps_train):
+                    sum += len(caps_train[to])
+                    to += 1
 
             bcats = cats_train[fr:to]
             bcaps = caps_train[fr:to]
+
+            print('length of sequences in batch', [len(s) for s in bcaps])
+            print('-- total', builtins.sum([len(s) for s in bcaps]), len(bcaps))
 
             # translate captions to tensors
             res = model.tokenizer.batch_encode_plus(bcaps, pad_to_max_length=True, max_length=max([len(s) for s in bcaps]))
@@ -343,6 +355,8 @@ def go(arg):
 
             opt.step()
             # sch.step()
+
+            fr = to
 
 def tobatch(df, tokenizer, g2i, normalize_genres=True, limit=2000, glist=None):
 
@@ -408,6 +422,11 @@ if __name__ == "__main__":
                         dest="batch",
                         help="Batch size.",
                         default=16, type=int)
+
+    parser.add_argument("--bc", "--batch-characters",
+                        dest="batch_char",
+                        help="Maximum characters per batch (for variable batchs sizes).",
+                        default=None, type=int)
 
     parser.add_argument("-e", "--epochs",
                         dest="epochs",
