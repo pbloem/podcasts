@@ -307,7 +307,7 @@ def go(arg):
 
 
         pbar = tqdm.tqdm(total=len(caps_train))
-        fr = seen = 0
+        fr = 0
         while fr < ntrain:
 
             if arg.batch_char is None:
@@ -321,8 +321,6 @@ def go(arg):
 
             bcats = cats_train[fr:to]
             bcaps = caps_train[fr:to]
-
-            seen += len(bcaps)
 
             if arg.limit is not None and seen > arg.limit:
                 break
@@ -378,7 +376,7 @@ def go(arg):
             # sch.step()
 
             fr = to
-            pbar.update(to)
+            pbar.update(b)
 
         pbar.close()
 
