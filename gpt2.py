@@ -193,7 +193,21 @@ class GPT2Model(tr.GPT2PreTrainedModel):
         else:
             token_type_embeds = 0
 
-        hidden_states = inputs_embeds + position_embeds + token_type_embeds
+        try:
+            hidden_states = inputs_embeds + position_embeds + token_type_embeds
+        except Exception as e:
+
+            print(inputs_embeds)
+            print(position_embeds)
+            print(token_type_embeds)
+
+            print(inputs_embeds.size())
+            print(position_embeds.size())
+            print(token_type_embeds.size())
+
+            raise e
+
+
         hidden_states = self.drop(hidden_states)
 
         output_shape = input_shape + (hidden_states.size(-1),)
