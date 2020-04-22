@@ -299,7 +299,9 @@ def go(arg):
                     print(seed, file=file)
                     print(outseq, flush=True, file=file)
 
-        fr = 0
+
+        pbar = tqdm.tqdm(total=len(caps_train))
+        fr = seen = 0
         while fr < ntrain:
 
             if arg.batch_char is None:
@@ -313,7 +315,12 @@ def go(arg):
 
             bcats = cats_train[fr:to]
             bcaps = caps_train[fr:to]
-            #
+
+            seen += len(bcaps)
+
+            if arg.limit is not None and seen > arg.limit:
+                break
+
             # print('length of sequences in batch', [len(s) for s in bcaps])
             # print('-- total', builtins.sum([len(s) for s in bcaps]), len(bcaps))
 
@@ -340,7 +347,15 @@ def go(arg):
             if torch.cuda.is_available():
                 source, target, cats = source.to('cuda'), target.to('cuda'), cats.to('cuda')
 
-            output = model(source, cond=cats)
+            try:
+                output = model(source, cond=cats)
+            except Exception as e:
+                print('length of sequences in batch', [len(s) for s in bcaps])
+                print('-- total', builtins.sum([len(s) for s in bcaps]), len(bcaps))
+                print(bcaps)
+
+                raise e
+
 
             loss = F.cross_entropy(output.transpose(2, 1), target, reduction='mean')
             tbw.add_scalar('podcasts/train-loss', float(loss.item()) * LOG2E, seen)
@@ -357,6 +372,9 @@ def go(arg):
             # sch.step()
 
             fr = to
+            pbar.update(to)
+
+        pbar.close()
 
 def tobatch(df, tokenizer, g2i, normalize_genres=True, limit=2000, glist=None):
 
@@ -518,6 +536,11 @@ if __name__ == "__main__":
                         dest="nrandom",
                         help="How many random sequences to generate per epoch.",
                         default=5, type=int)
+
+    parser.add_argument("--limit",
+                        dest="limit",
+                        help="Limit on the nr of instances per epoch (for debugging).",
+                        default=None, type=int)
 
     parser.add_argument("--max-length",
                         dest="max_length",
