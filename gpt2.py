@@ -6,6 +6,8 @@ from torch import nn
 
 from modules import TransformerBlock
 
+import sys
+
 """
 Finetuning models for GPT2
 
@@ -195,9 +197,13 @@ class GPT2Model(tr.GPT2PreTrainedModel):
 
         try:
             hidden_states = inputs_embeds + position_embeds + token_type_embeds
-        except Exception as e:
+        except Exception:
 
-            print(inputs_embeds)
+            print('Exception occurred')
+
+            print('input ids', input_ids)
+
+            print(inputs_embeds.size())
             print(position_embeds)
             print(token_type_embeds)
 
@@ -205,7 +211,7 @@ class GPT2Model(tr.GPT2PreTrainedModel):
             print(position_embeds.size())
             print(token_type_embeds.size())
 
-            raise e
+            sys.exit()
 
 
         hidden_states = self.drop(hidden_states)
