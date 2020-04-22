@@ -201,16 +201,11 @@ class GPT2Model(tr.GPT2PreTrainedModel):
 
             print('Exception occurred')
 
-            print('input ids', input_ids)
+            print('input ids', input_ids.size())
 
             print(inputs_embeds.size())
-            print(position_embeds)
-            print(token_type_embeds)
 
-            print(inputs_embeds.size())
-            print(position_embeds.size())
-            print(token_type_embeds.size())
-
+            print('exiting.')
             sys.exit()
 
 
