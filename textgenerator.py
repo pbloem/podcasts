@@ -142,7 +142,9 @@ def pad_sequences(sequences, token=0, max_length=None):
     """
 
     if max_length is not None:
-        sequences = [s[:max_length] for s in sequences]
+        for s in sequences:
+            while len(s) > max_length:
+                s.pop()
 
     mx = max([len(s) for s in sequences])
 
